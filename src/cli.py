@@ -6,9 +6,20 @@ and a final summary table.
 """
 from __future__ import annotations
 
+import os
 import sys
 from contextlib import contextmanager
 from typing import Generator, List, Optional, Tuple
+
+# Ensure UTF-8 output on Windows terminals (cp1252 cannot render Rich's Unicode symbols)
+if sys.platform == "win32":
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+    if hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
 
 from rich.console import Console
 from rich.panel import Panel
@@ -55,7 +66,7 @@ def print_banner(dry_run: bool = False) -> None:
     title = "Gillsystems AI Stack Updater"
     subtitle = "ROCm/HIP + llama.cpp — AMD Consumer GPU Edition"
     if dry_run:
-        subtitle += "   [dry_run]◀ DRY-RUN MODE — no changes will be made ▶[/dry_run]"
+        subtitle += "   [dry_run]\u25c0 DRY-RUN MODE \u2014 no changes will be made \u25b6[/dry_run]"
     console.print(
         Panel(
             f"[header]{title}[/header]\n{subtitle}",

@@ -42,6 +42,16 @@ class ROCmUpdater:
         distro = _detect_distro()
         print_info(f"Detected Linux distribution: {distro}")
 
+        # SteamOS / Arch-based distros: ROCm installer not available.
+        # Tier 2 devices (e.g. Steam Deck) should use Vulkan instead.
+        if _is_arch_based(distro):
+            print_warning(
+                "SteamOS / Arch-based distro detected. "
+                "AMD amdgpu-install is not available for Arch. "
+                "llama.cpp will be built with Vulkan backend instead."
+            )
+            return False
+
         # Step 1: Download amdgpu-install
         installer_path = self._download_amdgpu_install(distro)
         if not installer_path:
@@ -241,6 +251,10 @@ def _is_debian_based(distro: str) -> bool:
     return any(k in distro for k in ("ubuntu", "debian", "mint", "pop"))
 
 
+def _is_arch_based(distro: str) -> bool:
+    return any(k in distro for k in ("arch", "steamos", "manjaro", "endeavouros"))
+
+
 def _ubuntu_codename() -> str:
     try:
         info = platform.freedesktop_os_release()
@@ -270,7 +284,7 @@ def _run_privileged(
     Run a shell command.  If not root, prepend sudo.
     Raises CalledProcessError on failure.
     """
-    if os.geteuid() != 0:
+    if hasattr(os, "geteuid") and os.geteuid() != 0:
         cmd = ["sudo"] + cmd
 
     logger.debug("Running: %s", " ".join(cmd))
