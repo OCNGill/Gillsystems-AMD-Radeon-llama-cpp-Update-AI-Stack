@@ -235,6 +235,8 @@ _PCI_TO_GFX: dict[str, str] = {
     "73E1": "gfx1031",  # RX 6700
     # RDNA 2 (gfx1032)
     "73FF": "gfx1032",  # RX 6650 XT / 6600 XT / 6600
+    # RDNA 2 APU (gfx1033) — Steam Deck / Van Gogh
+    "163F": "gfx1033",  # AMD Custom GPU 0405 (Steam Deck)
 }
 
 

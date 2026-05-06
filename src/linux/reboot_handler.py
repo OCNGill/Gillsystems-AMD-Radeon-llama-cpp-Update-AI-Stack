@@ -114,7 +114,7 @@ def _run_privileged(
     cmd: list[str],
     check: bool = True,
 ) -> subprocess.CompletedProcess:
-    if os.geteuid() != 0:
+    if hasattr(os, "geteuid") and os.geteuid() != 0:
         cmd = ["sudo"] + cmd
     logger.debug("Running: %s", " ".join(cmd))
     return subprocess.run(cmd, check=check, timeout=30)

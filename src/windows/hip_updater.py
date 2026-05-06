@@ -12,7 +12,7 @@ import re
 import subprocess
 import tempfile
 import urllib.request
-import winreg
+
 from pathlib import Path
 from typing import Optional
 
@@ -240,6 +240,7 @@ class HIPUpdater:
 
 def _set_system_env(name: str, value: str) -> None:
     """Write a system environment variable to the Windows registry."""
+    import winreg
     try:
         key = winreg.OpenKey(
             winreg.HKEY_LOCAL_MACHINE,
@@ -256,6 +257,7 @@ def _set_system_env(name: str, value: str) -> None:
 
 def _append_to_system_path(new_dir: str) -> None:
     """Add a directory to the system PATH if not already present."""
+    import winreg
     try:
         key = winreg.OpenKey(
             winreg.HKEY_LOCAL_MACHINE,

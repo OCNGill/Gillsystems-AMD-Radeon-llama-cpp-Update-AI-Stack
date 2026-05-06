@@ -75,10 +75,12 @@ class TestROCmUpdaterDryRun:
         from src.linux.rocm_updater import ROCmUpdater
 
         updater = ROCmUpdater(dry_run_cfg)
-        with patch.object(updater, "_download_amdgpu_install", return_value=Path("/tmp/fake.deb")):
-            with patch.object(updater, "_install_package"):
-                with patch.object(updater, "_run_amdgpu_install", return_value=False):
-                    reboot = updater.update()
+        with patch("src.linux.rocm_updater._detect_distro", return_value="ubuntu jammy"), \
+             patch("src.linux.rocm_updater._is_arch_based", return_value=False), \
+             patch.object(updater, "_download_amdgpu_install", return_value=Path("/tmp/fake.deb")), \
+             patch.object(updater, "_install_package"), \
+             patch.object(updater, "_run_amdgpu_install", return_value=False):
+            reboot = updater.update()
 
         assert reboot is False
 
