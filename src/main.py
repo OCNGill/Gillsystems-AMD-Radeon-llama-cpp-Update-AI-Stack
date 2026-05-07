@@ -116,7 +116,9 @@ class Orchestrator:
                     return self._initiate_reboot("post_rocm_resume")
 
             # Phase 4: llama.cpp build
-            if not self.skip_llama and self.manifest.llama_cpp.needs_update:
+            # Always build when --force is set, even if version check says current.
+            llama_needs_build = self.manifest.llama_cpp.needs_update or self.cfg.behavior.force
+            if not self.skip_llama and llama_needs_build:
                 self._step_build_llama(gpu_targets)
 
             # Phase 5: validate
