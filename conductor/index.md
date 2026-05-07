@@ -15,4 +15,5 @@ An autonomous, reboot-resilient agent system that keeps ROCm/HIP and llama.cpp a
 - `conductor/setup_state.json`
 
 ## Status
-**Phase:** Define → Design (awaiting Commander approval)
+**Phase:** Develop / Debug — Active (T-001 core implementation complete; ongoing hardening and AMD docs alignment)
+**Last Updated:** 2026-05-06

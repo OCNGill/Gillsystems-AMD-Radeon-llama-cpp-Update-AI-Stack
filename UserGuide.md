@@ -24,13 +24,32 @@ Launch the updater agent directly from your terminal:
 
 ## 🏗️ Architecture & State Tracking
 
-Gillsystems AI Stack Updater implements a fully reboot-resilient architecture that tracks state progressively into a local SQLite ledger `state/checkpoint.db`, meaning the application safely picks up right where it left off! 
+Gillsystems AI Stack Updater implements a fully reboot-resilient architecture that tracks state progressively into a local SQLite ledger `state/checkpoint.db`, meaning the application safely picks up right where it left off!
 
 - The main `Orchestrator` validates system state against upstream versions (`version_intel`).
 - Distinct `Linux` and `Windows` Sub-Agents handle platform-specific operations:
   - **Linux (`rocm_updater.py`):** Uses native package managers to install AMDGPU drivers under `amdgpu-install --usecase=rocm,hiplibsdk`.
-  - **Windows (`hip_updater.py`):** Operates the AMD HIP SDK Installer silently.
-- A cross-platform `LlamaBuilder` pulls the official `llama.cpp` tree from GitHub, determines your specific `AMDGPU_TARGETS` constraint (such as `gfx1030` or `gfx1100`), and performs an embedded CMake build targeted at the `HIP` backend.
+  - **Windows (`hip_updater.py`):** Operates the AMD HIP SDK 7.x Installer silently.
+- Platform-aware `LlamaBuilder` selects the correct upstream source and builds with HIP:
+  - **Linux:** Clones AMD's official [`ROCm/llama.cpp`](https://github.com/ROCm/llama.cpp) fork (per AMD documentation). Sets `HIPCXX` and `HIP_PATH` from `hipconfig` before building. CMake flags include `-DGGML_HIP=ON`, `-DGGML_HIP_ROCWMMA_FATTN=ON`, and `-DLLAMA_CURL=ON`.
+  - **Windows:** Clones [`ggml-org/llama.cpp`](https://github.com/ggml-org/llama.cpp) (AMD has no native Windows ROCm build documentation). Uses Ninja + MSVC with auto-detected HIP SDK path.
+  - GPU architecture targets (`AMDGPU_TARGETS`) are auto-detected from WMI / rocminfo and cover all Gillsystems nodes: `gfx1100` (7900 XTX), `gfx1102` (RX 7600), `gfx1033` (Steam Deck), `gfx1030` (RDNA 2), `gfx906` (Vega 20), and more.
+
+### 🔧 Force a Clean Rebuild
+
+If binaries fail to load new model tensor formats (e.g. Gemma 4) or cmake links against a stale HIP SDK version:
+
+```bat
+update-ai-stack.bat --force
+```
+
+`--force` deletes the entire CMake cache directory before reconfiguring, ensuring a fully clean build against the currently installed HIP SDK. It also handles locked `.exe` files — existing binaries are renamed before install so they can be overwritten even if another terminal has them open.
+
+For absolute bleeding-edge model support (master branch, post-Gemma 4):
+
+```bat
+update-ai-stack.bat --bleeding-edge
+```
 
 *(See internal `conductor/` documentation and `documentation/implementation_plan.md` for specific architectural guidelines.)*
 

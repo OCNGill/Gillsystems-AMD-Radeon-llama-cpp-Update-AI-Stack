@@ -74,7 +74,13 @@ kernel drivers → amdgpu → ROCm runtime → HIP → rocBLAS → hipBLAS → l
 update-ai-stack.bat
 ```
 
-Runs as Administrator (UAC prompt appears if not already elevated). On first run, installs Python dependencies automatically.
+Runs as Administrator (UAC prompt appears if not already elevated). `bootstrap.ps1` handles the entire first-run experience automatically: locates Python, installs all dependencies, then launches the agent. No manual setup needed.
+
+To force a full clean rebuild (clears CMake cache and re-runs all steps):
+
+```bat
+update-ai-stack.bat --force
+```
 
 ### Linux
 
@@ -123,21 +129,21 @@ python -m src.main --check-only
 ## CLI Reference
 
 ```
-usage: gillsystems-ai-stack-updater [-h] [--dry-run] [--check-only] [--yes] [--force]
-            [--no-rocm] [--no-llama] [--config CONFIG]
-            [--gpu-targets TARGETS [TARGETS ...]] [--verbose] [--version]
+usage: gillsystems-ai-stack-updater [-h] [--dry-run] [--yes] [--force] [--skip-rocm]
+            [--skip-llama] [--config CONFIG] [--verbose] [--bleeding-edge]
+            [--resume] [--version]
 ```
 
 | Flag | Description |
 |---|---|
 | `--dry-run` | Simulate the entire run — no installs, no builds, no reboots |
-| `--check-only` | Check and display version status, then exit (implies `--dry-run`) |
 | `--yes` / `-y` | Auto-confirm all prompts (non-interactive/CI mode) |
-| `--force` | Re-run all steps even if already up to date |
-| `--no-rocm` | Skip ROCm/HIP update step |
-| `--no-llama` | Skip llama.cpp build step |
+| `--force` | Re-run all steps even if already up to date; also clears the CMake cache directory before building to prevent stale HIP SDK links |
+| `--skip-rocm` | Skip ROCm/HIP update step |
+| `--skip-llama` | Skip llama.cpp build step |
+| `--bleeding-edge` | Compile llama.cpp from master branch instead of latest stable tag (zero-day model support, e.g. Gemma 4) |
 | `--config PATH` | Path to a custom config YAML (default: `config/default_config.yaml`) |
-| `--gpu-targets T [T ...]` | Override GPU architecture targets (e.g. `gfx1100 gfx1030`) |
+| `--resume` | Resume after a reboot — called automatically by the startup task |
 | `--verbose` | Enable verbose/debug logging |
 | `--version` | Print Gillsystems AI Stack Updater version and exit |
 
@@ -151,23 +157,28 @@ Gillsystems AI Stack Updater reads `config/default_config.yaml` on startup. Ever
 
 ```yaml
 gpu:
-  targets: [gfx1100, gfx1101, gfx1030]   # override with --gpu-targets
-  auto_detect: true                        # auto-detect from rocminfo/lspci/WMI
+  # auto_detect=true queries rocminfo/WMI/lspci at runtime and overrides this list
+  targets: [gfx1100, gfx1102, gfx1033, gfx1030, gfx906]
+  auto_detect: true
 
 paths:
-  llama_src: ~/llama.cpp                   # where to clone llama.cpp
-  llama_install: /usr/local                # cmake --install prefix (Linux)
-  state_db: ~/.gillsystems-ai-stack-updater/state.db               # SQLite checkpoint database
-  log_dir: ~/.gillsystems-ai-stack-updater/logs                    # log file directory
+  llama_cpp_source:          "~/src/llama.cpp"        # where to clone source
+  llama_cpp_install_linux:   "/opt/gillsystems/llama.cpp"
+  llama_cpp_install_windows: "C:\\Gillsystems\\llama.cpp"
+  state_dir: "state"
+  log_dir:   "logs"
+
+repo:
+  # Linux uses AMD's maintained ROCm fork (per AMD official docs)
+  llama_cpp_repo:         "https://github.com/ROCm/llama.cpp.git"
+  # Windows uses mainstream ggml-org fork (AMD has no native Windows ROCm build docs)
+  llama_cpp_repo_windows: "https://github.com/ggml-org/llama.cpp.git"
+  bleeding_edge: false    # set true or use --bleeding-edge flag
 
 behavior:
-  auto_reboot: false                       # require user confirmation before rebooting
-  reboot_delay_seconds: 30                 # countdown before auto-reboot
-  rocm_usecase: rocm,hiplibsdk             # amdgpu-install --usecase value
-  llama_build_jobs: 0                      # 0 = use all CPU cores
-
-repos:
-  llama_cpp: https://github.com/ggml-org/llama.cpp
+  auto_reboot: true
+  reboot_countdown_seconds: 30
+  rocm_usecases: [rocm, hiplibsdk]
 ```
 
 ### Environment Variable Overrides
@@ -257,9 +268,13 @@ CREATE TABLE steps (
 |---|---|---|
 | RX 5500 / 5600 / 5700 | RDNA1 | `gfx1010`, `gfx1011`, `gfx1012` |
 | RX 6600 / 6700 / 6800 / 6900 | RDNA2 | `gfx1030`, `gfx1031`, `gfx1032` |
-| RX 7600 / 7700 / 7800 / 7900 | RDNA3 | `gfx1100`, `gfx1101`, `gfx1102` |
+| RX 7600 | RDNA3 | `gfx1102` |
+| RX 7700 XT / 7800 XT | RDNA3 | `gfx1101` |
+| RX 7900 GRE / 7900 XT / 7900 XTX | RDNA3 | `gfx1100` |
 | RX 9070 / 9070 XT | RDNA4 | `gfx1200`, `gfx1201` |
-| Radeon VII / Vega 64 | Vega20 | `gfx906` |
+| Steam Deck (Van Gogh APU) | RDNA2 APU | `gfx1033` |
+| Radeon VII / Vega 20 | Vega20 | `gfx906` |
+| Vega 6 / Vega 7 (Renoir / Cezanne iGPU) | GCN5 iGPU | `gfx90c` |
 | RX 580 / 590 | Polaris | `gfx803` |
 
 Gillsystems AI Stack Updater auto-detects the correct targets using `rocminfo`, `/sys/class/drm`, `lspci -nn`, `wmi`, and `hipInfo`. Manual override is available via `--gpu-targets` or the config file.
