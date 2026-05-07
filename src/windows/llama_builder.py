@@ -167,8 +167,17 @@ class LlamaBuilderWindows:
             cmake_args += ["-G", "Visual Studio 17 2022", "-A", "x64"]
 
         if self.cfg.behavior.dry_run:
+            if self.cfg.behavior.force and self.build_dir.exists():
+                print_dry_run(f"Would delete stale cmake cache: {self.build_dir}")
             print_dry_run(f"Would configure: {' '.join(cmake_args)}")
             return
+
+        # --force: nuke the cmake cache directory so stale HIP SDK links can't
+        # persist and cause "unknown tensor" / wrong-version link failures.
+        if self.cfg.behavior.force and self.build_dir.exists():
+            print_step(f"--force: removing stale cmake cache at {self.build_dir}")
+            shutil.rmtree(self.build_dir)
+            print_success("Stale build directory removed.")
 
         print_step(f"Configuring CMake (targets: {targets_str})...")
         self.build_dir.mkdir(parents=True, exist_ok=True)
@@ -214,6 +223,11 @@ class LlamaBuilderWindows:
         if self.cfg.behavior.dry_run:
             print_dry_run(f"Would install binaries to {self.install_dir}")
             return
+
+        # Windows locks running .exe files. Rename any existing binaries out of
+        # the way before cmake --install so we don't get "access denied" failures
+        # when llama-server or llama-cli is still open in another terminal.
+        _unlock_existing_binaries(self.install_dir)
 
         install_cmd = [
             "cmake", "--install", str(self.build_dir),
@@ -261,12 +275,45 @@ class LlamaBuilderWindows:
 # ---------------------------------------------------------------------------
 
 
+def _unlock_existing_binaries(install_dir: Path) -> None:
+    """Rename existing llama binaries before install to avoid Windows file-locking errors.
+
+    If llama-cli.exe or llama-server.exe is open in another terminal, cmake --install
+    will fail with "access denied". Renaming to .exe.old lets the install proceed;
+    the old file is cleaned up on the next successful install.
+    """
+    bin_dir = install_dir / "bin"
+    if not bin_dir.exists():
+        return
+    for exe in bin_dir.glob("*.exe"):
+        stale = exe.with_suffix(".exe.old")
+        try:
+            stale.unlink(missing_ok=True)
+            exe.rename(stale)
+        except OSError as exc:
+            print_warning(
+                f"Could not rename {exe.name} ({exc}). "
+                "If it is currently running, stop it before installing or the install may fail."
+            )
+
+
 def _find_hip_path() -> Optional[str]:
-    """Try to locate the HIP SDK installation directory."""
+    """Try to locate the HIP SDK installation directory.
+
+    Searches newest-first so that the latest installed version wins.
+    Covers ROCm 7.x (current as of HIP SDK 7.2.2) down to 6.x legacy.
+    """
     candidates = [
+        # ROCm 7.x — current requirement per AMD / Gemma 4 compatibility
+        r"C:\Program Files\AMD\ROCm\7.3",
+        r"C:\Program Files\AMD\ROCm\7.2",
+        r"C:\Program Files\AMD\ROCm\7.1",
+        r"C:\Program Files\AMD\ROCm\7.0",
+        # ROCm 6.x — legacy fallback
         r"C:\Program Files\AMD\ROCm\6.3",
         r"C:\Program Files\AMD\ROCm\6.2",
         r"C:\Program Files\AMD\ROCm\6.1",
+        # Generic / symlinked install
         r"C:\Program Files\AMD\ROCm",
     ]
     for c in candidates:

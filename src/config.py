@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field, field_validator
 class GpuConfig(BaseModel):
     """GPU architecture targets for CMake."""
     targets: List[str] = Field(
-        default=["gfx1100", "gfx1101", "gfx1030"],
+        default=["gfx1100", "gfx1102", "gfx1033", "gfx1030", "gfx906"],
         description="AMDGPU_TARGETS passed to CMake.",
     )
     auto_detect: bool = Field(
