@@ -1,70 +1,43 @@
 @echo off
+setlocal EnableDelayedExpansion
+
 :: ============================================================
-:: Gillsystems AI Stack Updater — Windows Launcher
+:: Gillsystems AI Stack Updater - Windows Launcher
 :: update-ai-stack.bat
 ::
-:: Elevates to Administrator, then invokes the Python agent.
-:: All CLI arguments are forwarded to main.py.
+:: On every run:
+::   - Elevates to Administrator (UAC prompt if not already admin)
+::   - Calls bootstrap.ps1 which handles Python find/install,
+::     PATH updates, pip, dependencies, and running the agent
+::   - Window always stays open so errors can be read/copied
 :: ============================================================
 
-:: Check for Administrator rights
-NET SESSION >nul 2>&1
-IF %ERRORLEVEL% NEQ 0 (
-    echo.
-    echo  [Gillsystems AI Stack Updater] Requesting Administrator privileges...
-    powershell -NoProfile -Command ^
-        "Start-Process -FilePath '%~f0' -ArgumentList '%*' -Verb RunAs"
-    exit /b
-)
-
-:: Change to the directory containing this script
 cd /d "%~dp0"
 
-:: Verify Python 3.11+ is available
-python --version >nul 2>&1
-IF %ERRORLEVEL% NEQ 0 (
-    echo.
-    echo  [Gillsystems AI Stack Updater] ERROR: Python not found on PATH.
-    echo  Please install Python 3.11+ and ensure it is on your PATH.
-    echo.
-    pause
-    exit /b 1
-)
+:: -- Admin elevation (skipped in --dry-run) --
+SET IS_DRYRUN=0
+FOR %%A IN (%*) DO IF /I "%%A"=="--dry-run" SET IS_DRYRUN=1
 
-:: Check for Python 3.11+
-python -c "import sys; exit(0 if sys.version_info >= (3,11) else 1)" >nul 2>&1
-IF %ERRORLEVEL% NEQ 0 (
-    echo.
-    echo  [Gillsystems AI Stack Updater] ERROR: Python 3.11 or higher is required.
-    python --version
-    echo.
-    pause
-    exit /b 1
-)
-
-:: Install dependencies if requirements.txt is newer than last install marker
-IF NOT EXIST ".deps_installed" (
-    echo  [Gillsystems AI Stack Updater] Installing Python dependencies...
-    python -m pip install --quiet -r requirements.txt
-    IF %ERRORLEVEL% NEQ 0 (
-        echo  [Gillsystems AI Stack Updater] ERROR: Failed to install dependencies.
-        pause
-        exit /b 1
+NET SESSION >nul 2>&1
+IF !ERRORLEVEL! NEQ 0 (
+    IF !IS_DRYRUN! EQU 0 (
+        echo  [Gillsystems] Requesting Administrator privileges...
+        powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -ArgumentList '%*' -Verb RunAs"
+        exit /b
     )
-    echo installed > .deps_installed
+    echo  [Gillsystems] Dry-run mode - continuing without admin.
+    echo.
 )
 
-:: Run the agent
+:: -- Run the full bootstrap + agent via PowerShell --
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0bootstrap.ps1" %*
+SET EXIT_CODE=!ERRORLEVEL!
+
 echo.
-python -m src.main %*
-SET EXIT_CODE=%ERRORLEVEL%
-
-IF %EXIT_CODE% NEQ 0 (
-    IF %EXIT_CODE% NEQ 130 (
-        echo.
-        echo  [Gillsystems AI Stack Updater] Exited with code %EXIT_CODE%.
-        pause
-    )
+IF !EXIT_CODE! NEQ 0 IF !EXIT_CODE! NEQ 130 (
+    echo  [Gillsystems] *** ERROR ***  Exit code: !EXIT_CODE!
+    echo  Log: %~dp0gillsystems_run.log
+    echo.
 )
-
-exit /b %EXIT_CODE%
+pause
+exit /b !EXIT_CODE!
