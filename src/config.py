@@ -60,7 +60,7 @@ class RepoConfig(BaseModel):
 class BehaviorConfig(BaseModel):
     """Runtime behavior toggles."""
     dry_run: bool = Field(default=False)
-    auto_yes: bool = Field(default=False)
+    auto_yes: bool = Field(default=True)  # Fully autonomous, no Y/n prompt
     force: bool = Field(default=False)
     verbose: bool = Field(default=False)
     reboot_countdown_seconds: int = Field(default=30)

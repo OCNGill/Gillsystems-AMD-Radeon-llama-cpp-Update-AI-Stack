@@ -326,7 +326,17 @@ def _version_lt(installed: str, latest: str) -> bool:
     if "master" in latest:
         return True  # Always update in bleeding-edge mode
 
-    # Try semver comparison
+    # Windows AMD SDKs often install as 7.2.26024, but upstream says 7.2.3.
+    # To avoid constant flip-flopping, compare just the Major.Minor version for ROCm
+    inst_maj_min = re.match(r"^(\d+\.\d+)", installed)
+    latest_maj_min = re.match(r"^(\d+\.\d+)", latest)
+    if inst_maj_min and latest_maj_min:
+        try:
+            return float(inst_maj_min.group(1)) < float(latest_maj_min.group(1))
+        except ValueError:
+            pass
+
+    # Try standard semver comparison
     try:
         return Version(installed) < Version(latest)
     except InvalidVersion:

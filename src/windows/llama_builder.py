@@ -151,7 +151,10 @@ class LlamaBuilderWindows:
                 "-DGGML_HIP_ROCWMMA_FATTN=ON",
             ]
             if hip_path:
+                # Add proper pathing for Findhip.cmake on Windows
                 cmake_args.append(f"-DHIP_PATH={hip_path}")
+                cmake_args.append(f"-DCMAKE_PREFIX_PATH={hip_path}")
+                cmake_args.append(f"-Dhip_DIR={hip_path}/lib/cmake/hip")
         else:
             cmake_args.append("-DGGML_VULKAN=ON")
             print_info("Enabling Vulkan backend (HIP fallback for mobile/edge targets).")
