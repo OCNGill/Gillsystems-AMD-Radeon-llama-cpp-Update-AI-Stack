@@ -172,8 +172,13 @@ if ($LASTEXITCODE -eq 0) {
     Write-Step '[3/4] Dependencies installed.' 'Green'
 }
 
-# 4. Launch the agent
-$logFile = Join-Path $ROOT 'gillsystems_run.log'
+# 4. Create log directory and timestamped file
+$logDir = Join-Path $ROOT 'logs'
+if (-not (Test-Path $logDir)) {
+    New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+}
+$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$logFile = Join-Path $logDir "run_$timestamp.log"
 Write-Step "[4/4] Launching agent...  (log: $logFile)"
 Write-Host ''
 

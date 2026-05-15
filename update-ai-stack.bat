@@ -36,7 +36,7 @@ SET EXIT_CODE=!ERRORLEVEL!
 echo.
 IF !EXIT_CODE! NEQ 0 IF !EXIT_CODE! NEQ 130 (
     echo  [Gillsystems] *** ERROR ***  Exit code: !EXIT_CODE!
-    echo  Log: %~dp0gillsystems_run.log
+    echo  Logs check: %~dp0logs\
     echo.
 )
 pause
