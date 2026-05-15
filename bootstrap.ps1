@@ -183,18 +183,20 @@ $logFile = Join-Path $logDir "run_${nodeName}_$timestamp.log"
 Write-Step "[4/4] Launching agent...  (log: $logFile)"
 Write-Host ''
 
+# Kill any orphaned agent processes to free up locks unconditionally
+Write-Step '[4/4] Ensuring no leftover agent processes are running...' 'Yellow'
+Get-Process | Where-Object { $_.ProcessName -match "python" -and $_.CommandLine -match "src.main" } | Stop-Process -Force -ErrorAction SilentlyContinue
+
 Push-Location $ROOT
 try {
-    # CRITICAL FIX: Stderr → log file ONLY (avoids PowerShell 5.1 NativeCommandError noise).
-    # Stdout → both console AND log via Tee-Object (Append to avoid double-write).
-    # PowerShell 5.1 treats stderr bytes as errors and wraps them in red
-    # NativeCommandError decorations — httpx INFO logs via stderr trigger this.
-    # By sending stderr directly to the log file and only piping stdout through
-    # Tee-Object, the console stays clean while the log has full detail.
+    # CRITICAL FIX 2: Merge stdout/stderr but strip PowerShell 5.1's NativeCommandError 
+    # red wrapper by casting the ErrorRecords to strings before piping to Tee-Object.
+    # This solves the `out-file : The process cannot access the file` IOException 
+    # caused by trying to redirect 2>> and Tee-Object at the exact same time.
     if ($AppArgs.Count -gt 0) {
-        & $python -u -m src.main @AppArgs 2>>$logFile | Tee-Object -FilePath $logFile -Append
+        & $python -u -m src.main @AppArgs 2>&1 | ForEach-Object { $_.ToString() } | Tee-Object -FilePath $logFile -Append
     } else {
-        & $python -u -m src.main 2>>$logFile | Tee-Object -FilePath $logFile -Append
+        & $python -u -m src.main 2>&1 | ForEach-Object { $_.ToString() } | Tee-Object -FilePath $logFile -Append
     }
     $exitCode = $LASTEXITCODE
 } finally {
