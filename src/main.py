@@ -456,7 +456,7 @@ def main() -> None:
 
     # Configure logging
     log_level = logging.DEBUG if cfg.behavior.verbose else getattr(logging, cfg.log_level, logging.INFO)
-        logging.basicConfig(
+    logging.basicConfig(
         level=log_level,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%H:%M:%S",
