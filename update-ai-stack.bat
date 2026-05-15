@@ -22,7 +22,7 @@ NET SESSION >nul 2>&1
 IF !ERRORLEVEL! NEQ 0 (
     IF !IS_DRYRUN! EQU 0 (
         echo  [Gillsystems] Requesting Administrator privileges...
-        powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -ArgumentList '%*' -Verb RunAs"
+        powershell -NoProfile -Command "Start-Process cmd.exe -ArgumentList '/k', '\"%~f0\" %*' -Verb RunAs"
         exit /b
     )
     echo  [Gillsystems] Dry-run mode - continuing without admin.
