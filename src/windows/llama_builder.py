@@ -155,6 +155,9 @@ class LlamaBuilderWindows:
                 cmake_args.append(f"-DHIP_PATH={hip_path}")
                 cmake_args.append(f"-DCMAKE_PREFIX_PATH={hip_path}")
                 cmake_args.append(f"-Dhip_DIR={hip_path}/lib/cmake/hip")
+                cmake_args.append(f"-Dhipblas_DIR={hip_path}/lib/cmake/hipblas")
+                cmake_args.append(f"-Drocblas_DIR={hip_path}/lib/cmake/rocblas")
+                cmake_args.append(f"-DAMDDeviceLibs_DIR={hip_path}/lib/cmake/AMDDeviceLibs")
         else:
             cmake_args.append("-DGGML_VULKAN=ON")
             print_info("Enabling Vulkan backend (HIP fallback for mobile/edge targets).")
