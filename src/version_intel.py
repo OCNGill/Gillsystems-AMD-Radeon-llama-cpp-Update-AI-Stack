@@ -171,9 +171,9 @@ class VersionIntel:
         """
         try:
             with httpx.Client(timeout=self._timeout, follow_redirects=True) as client:
-                # Try the latest symlink release page
+                # Try the jammy (Ubuntu 22.04) release page instead of focal (20.04) which 404s
                 resp = client.get(
-                    "https://repo.radeon.com/rocm/apt/latest/dists/focal/Release"
+                    "https://repo.radeon.com/rocm/apt/latest/dists/jammy/Release"
                 )
                 # Look for Version: field in apt Release file
                 match = re.search(r"Version:\s*(\d+\.\d+[\.\d]*)", resp.text)
