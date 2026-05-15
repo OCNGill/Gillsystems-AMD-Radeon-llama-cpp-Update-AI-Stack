@@ -50,7 +50,7 @@ repo:
 # ------------------------------------------------------------
 behavior:
   dry_run:                   false   # true = show what would happen, make no changes
-  auto_yes:                  false   # true = auto-confirm all prompts (--yes flag)
+  auto_yes:                  true    # true = auto-confirm all prompts (fully autonomous)
   force:                     false   # true = re-run all steps even if already done
   verbose:                   false   # true = enable debug logging
   auto_reboot:               true    # false = warn & wait for manual reboot
