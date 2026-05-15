@@ -177,8 +177,9 @@ $logDir = Join-Path $ROOT 'logs'
 if (-not (Test-Path $logDir)) {
     New-Item -ItemType Directory -Path $logDir -Force | Out-Null
 }
+$nodeName = $env:COMPUTERNAME
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$logFile = Join-Path $logDir "run_$timestamp.log"
+$logFile = Join-Path $logDir "run_${nodeName}_$timestamp.log"
 Write-Step "[4/4] Launching agent...  (log: $logFile)"
 Write-Host ''
 

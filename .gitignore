@@ -1,6 +1,7 @@
 # Runtime state and temp files
 state/
-logs/
+*.log
+!logs/.gitkeep
 .deps_installed
 *.pyc
 __pycache__/
