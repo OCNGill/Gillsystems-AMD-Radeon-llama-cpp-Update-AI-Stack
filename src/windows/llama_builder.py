@@ -148,6 +148,7 @@ class LlamaBuilderWindows:
             cmake_args += [
                 f"-DAMDGPU_TARGETS={targets_str}",
                 "-DGGML_HIP=ON",
+                "-DHIP_PLATFORM=amd",
             ]
             if hip_path:
                 # Add proper pathing for Findhip.cmake on Windows
