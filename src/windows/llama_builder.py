@@ -148,7 +148,6 @@ class LlamaBuilderWindows:
             cmake_args += [
                 f"-DAMDGPU_TARGETS={targets_str}",
                 "-DGGML_HIP=ON",
-                "-DGGML_HIP_ROCWMMA_FATTN=ON",
             ]
             if hip_path:
                 # Add proper pathing for Findhip.cmake on Windows
@@ -346,7 +345,7 @@ def _build_env(vcvars: Path) -> dict:
         if "=" in line:
             key, _, value = line.partition("=")
             env[key.strip()] = value.strip()
-    return env or None
+    return env
 
 
 def _run(cmd: list[str], timeout: int = 3600, env: Optional[dict] = None) -> None:
