@@ -133,7 +133,7 @@ class LlamaBuilderWindows:
         targets_str = ";".join(self.gpu_targets)
 
         # Find HIP_PATH from environment or default location
-        hip_path = os.environ.get("HIP_PATH", _find_hip_path())
+        hip_path = os.environ.get("HIP_PATH") or _find_hip_path()
         use_hip = bool(shutil.which("hipcc"))
 
         cmake_args = [
@@ -145,11 +145,18 @@ class LlamaBuilderWindows:
         ]
 
         if use_hip:
+            enable_rocwmma = _hip_has_rocwmma(hip_path)
             cmake_args += [
                 f"-DAMDGPU_TARGETS={targets_str}",
                 "-DGGML_HIP=ON",
                 "-DHIP_PLATFORM=amd",
+                f"-DGGML_HIP_ROCWMMA_FATTN={'ON' if enable_rocwmma else 'OFF'}",
             ]
+            if not enable_rocwmma:
+                print_warning(
+                    "HIP SDK does not include rocWMMA headers; disabling "
+                    "GGML_HIP_ROCWMMA_FATTN on Windows."
+                )
             if hip_path:
                 # Add proper pathing for Findhip.cmake on Windows
                 cmake_args.append(f"-DHIP_PATH={hip_path}")
@@ -327,6 +334,13 @@ def _find_hip_path() -> Optional[str]:
         if Path(c).exists():
             return c
     return None
+
+
+def _hip_has_rocwmma(hip_path: Optional[str]) -> bool:
+    """Return True when the installed HIP SDK exposes the rocWMMA header set."""
+    if not hip_path:
+        return False
+    return Path(hip_path, "include", "rocwmma", "rocwmma-version.hpp").exists()
 
 
 def _build_env(vcvars: Path) -> dict:
