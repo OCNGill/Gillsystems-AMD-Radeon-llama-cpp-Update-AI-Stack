@@ -176,26 +176,62 @@ class GPUDetector:
         return []
 
     def _windows_via_wmi(self) -> List[str]:
+        names = []
         try:
             import wmi  # type: ignore[import]
             c = wmi.WMI()
-            targets: List[str] = []
             for gpu in c.Win32_VideoController():
-                name: str = gpu.Name or ""
-                if "AMD" not in name.upper() and "RADEON" not in name.upper():
-                    continue
-                for product, gfx in _PRODUCT_TO_GFX.items():
-                    if product.upper() in name.upper():
-                        targets.append(gfx)
-                        break
-                else:
-                    # Try to extract gfx from driver description
-                    match = re.search(r"gfx\d{3,4}", name, re.IGNORECASE)
-                    if match:
-                        targets.append(match.group(0).lower())
-            return targets
+                if gpu.Name:
+                    names.append(gpu.Name)
         except Exception:
-            return []
+            # Fallback to PowerShell Get-CimInstance or wmic if wmi package not installed
+            try:
+                out = subprocess.run(
+                    ["powershell", "-Command", "Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name"],
+                    capture_output=True, text=True, timeout=10
+                ).stdout
+                for line in out.splitlines():
+                    line_str = line.strip()
+                    if line_str:
+                        names.append(line_str)
+            except Exception:
+                try:
+                    out = subprocess.run(
+                        ["wmic", "path", "win32_videocontroller", "get", "name"],
+                        capture_output=True, text=True, timeout=10
+                    ).stdout
+                    for line in out.splitlines():
+                        line_str = line.strip()
+                        if line_str and line_str.lower() != "name":
+                            names.append(line_str)
+                except Exception:
+                    pass
+
+        targets: List[str] = []
+        for name in names:
+            if "AMD" not in name.upper() and "RADEON" not in name.upper():
+                continue
+            
+            # Clean up parenthesized strings like (TM) or (R)
+            cleaned_name = re.sub(r'\s*\([^)]*\)\s*', ' ', name)
+            cleaned_name = " ".join(cleaned_name.split())
+            
+            matched = False
+            for product, gfx in _PRODUCT_TO_GFX.items():
+                cleaned_product = re.sub(r'\s*\([^)]*\)\s*', ' ', product)
+                cleaned_product = " ".join(cleaned_product.split())
+                
+                if cleaned_product.upper() in cleaned_name.upper():
+                    targets.append(gfx)
+                    matched = True
+                    break
+            
+            if not matched:
+                # Try to extract gfx from driver description
+                match = re.search(r"gfx\d{3,4}", name, re.IGNORECASE)
+                if match:
+                    targets.append(match.group(0).lower())
+        return targets
 
     def _windows_via_hipinfo(self) -> List[str]:
         try:

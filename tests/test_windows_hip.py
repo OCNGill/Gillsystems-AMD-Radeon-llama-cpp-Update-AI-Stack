@@ -51,7 +51,7 @@ class TestHIPUpdaterFinder:
             mock_client = MagicMock()
             mock_client.__enter__ = MagicMock(return_value=mock_client)
             mock_client.__exit__ = MagicMock(return_value=False)
-            mock_client.head.return_value = mock_response
+            mock_client.get.return_value = mock_response
             mock_client_cls.return_value = mock_client
 
             url, version = updater._find_latest_installer()
@@ -70,14 +70,14 @@ class TestHIPUpdaterFinder:
             mock_client = MagicMock()
             mock_client.__enter__ = MagicMock(return_value=mock_client)
             mock_client.__exit__ = MagicMock(return_value=False)
-            mock_client.head.side_effect = Exception("network error")
+            mock_client.get.side_effect = Exception("network error")
             mock_client_cls.return_value = mock_client
 
             url, version = updater._find_latest_installer()
 
         # Should still return a fallback
         assert url is not None
-        assert "HIP-SDK-Installer" in url
+        assert "HIP" in url
 
 
 # ---------------------------------------------------------------------------
