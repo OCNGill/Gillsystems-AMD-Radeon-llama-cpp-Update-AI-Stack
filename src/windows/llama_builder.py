@@ -39,6 +39,11 @@ _HIP_RUNTIME_DLL_GLOBS: tuple[str, ...] = (
     "libroc*.dll",
 )
 
+_MTP_HELP_MARKERS: tuple[str, ...] = (
+    "--spec-type",
+    "draft-mtp",
+)
+
 
 class LlamaBuilderWindows:
     """Clones, builds, and installs llama.cpp on Windows with AMD HIP."""
@@ -272,6 +277,16 @@ class LlamaBuilderWindows:
                     f"Bundled {copied} HIP runtime DLL"
                     f"{'' if copied == 1 else 's'} into {self.install_dir / 'bin'}."
                 )
+
+            rocblas_library_dir = _bundle_rocblas_runtime_support(hip_path, self.install_dir / "bin")
+            if rocblas_library_dir:
+                print_info(f"Bundled rocBLAS support files into {rocblas_library_dir}.")
+            else:
+                print_warning(
+                    "HIP SDK rocBLAS support files were not found. "
+                    "HIP inference may fail if rocblas/library is unavailable at runtime."
+                )
+
             for runtime_dir in _hip_runtime_dirs(hip_path):
                 _append_to_user_path(str(runtime_dir))
                 print_info(f"Added {runtime_dir} to user PATH.")
@@ -295,7 +310,11 @@ class LlamaBuilderWindows:
             os.environ.copy(),
             [str(self.install_dir / "bin"), *[str(path) for path in _hip_runtime_dirs(hip_path)]],
         )
+        rocblas_tensile_libpath = _resolve_rocblas_tensile_libpath(self.install_dir / "bin", hip_path)
+        if rocblas_tensile_libpath:
+            runtime_env["ROCBLAS_TENSILE_LIBPATH"] = rocblas_tensile_libpath
 
+        validated_binary: Optional[Path] = None
         for binary in ("llama-cli.exe", "llama-server.exe", "main.exe"):
             bin_path = self.install_dir / "bin" / binary
             if bin_path.exists():
@@ -311,14 +330,44 @@ class LlamaBuilderWindows:
                     first_line = output_lines[0] if output_lines else "(no version output)"
                     if result.returncode == 0:
                         print_success(f"{binary}: {first_line[:80]}")
-                        return
+                        validated_binary = bin_path
+                        break
                     print_warning(
                         f"{binary} exited with code {result.returncode}: {first_line[:120]}"
                     )
                 except Exception as exc:
                     print_warning(f"Could not run {binary}: {exc}")
 
-        print_warning("Could not validate llama.cpp binary — check installation manually.")
+        if not validated_binary:
+            print_warning("Could not validate llama.cpp binary — check installation manually.")
+            return
+
+        mtp_check_binary = next(
+            (
+                self.install_dir / "bin" / name
+                for name in ("llama-server.exe", "llama-cli.exe")
+                if (self.install_dir / "bin" / name).exists()
+            ),
+            validated_binary,
+        )
+
+        try:
+            result = subprocess.run(
+                [str(mtp_check_binary), "--help"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                env=runtime_env,
+            )
+            help_text = (result.stdout or "") + (result.stderr or "")
+            if result.returncode == 0 and all(marker in help_text for marker in _MTP_HELP_MARKERS):
+                print_success(f"{mtp_check_binary.name}: speculative MTP options detected.")
+            else:
+                print_warning(
+                    f"{mtp_check_binary.name} did not advertise draft-mtp support in --help output."
+                )
+        except Exception as exc:
+            print_warning(f"Could not inspect {mtp_check_binary.name} --help: {exc}")
 
 
 # ---------------------------------------------------------------------------
@@ -411,6 +460,46 @@ def _bundle_hip_runtime_libraries(hip_path: Optional[str], install_bin: Path) ->
                 copied += 1
 
     return copied
+
+
+def _hip_rocblas_runtime_dir(hip_path: Optional[str]) -> Optional[Path]:
+    """Return the HIP SDK rocBLAS runtime directory when it ships Tensile data files."""
+    if not hip_path:
+        return None
+
+    hip_root = Path(hip_path)
+    candidates = [
+        hip_root / "bin" / "rocblas",
+        hip_root / "rocblas",
+    ]
+    for candidate in candidates:
+        if (candidate / "library").exists():
+            return candidate
+    return None
+
+
+def _bundle_rocblas_runtime_support(hip_path: Optional[str], install_bin: Path) -> Optional[Path]:
+    """Copy rocBLAS support files so bundled rocblas.dll can locate Tensile data on Windows."""
+    rocblas_dir = _hip_rocblas_runtime_dir(hip_path)
+    if not rocblas_dir:
+        return None
+
+    destination = install_bin / "rocblas"
+    shutil.copytree(rocblas_dir, destination, dirs_exist_ok=True)
+    return destination / "library"
+
+
+def _resolve_rocblas_tensile_libpath(install_bin: Path, hip_path: Optional[str]) -> Optional[str]:
+    """Return the best rocBLAS Tensile library path for runtime launches."""
+    bundled = install_bin / "rocblas" / "library"
+    if bundled.exists():
+        return str(bundled)
+
+    rocblas_dir = _hip_rocblas_runtime_dir(hip_path)
+    if rocblas_dir:
+        return str(rocblas_dir / "library")
+
+    return None
 
 
 def _prepend_to_path_env(base_env: dict, extra_dirs: list[str]) -> dict:
