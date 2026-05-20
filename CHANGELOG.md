@@ -6,6 +6,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **Example llama.cpp server launchers**: Added `Gillsystems_example_server_edit_per_node.bat` and `Gillsystems_example_server_edit_per_node.sh` in the repo root. Both create timestamped logs in `logs/` and ship Gemma-safe defaults with MTP flags omitted.
+
+### Changed
+
+- **Linux launcher logging**: `update-ai-stack.sh` now mirrors Windows behavior by writing timestamped run logs into `logs/` while still streaming output to the console.
+
 ## [1.0.1] — 2026-05-06 — Windows 11 Hardening (Current)
 
 ### Added

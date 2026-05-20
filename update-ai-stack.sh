@@ -56,7 +56,32 @@ if [[ ! -f "$DEPS_MARKER" ]] || [[ "requirements.txt" -nt "$DEPS_MARKER" ]]; the
 fi
 
 # -----------------------------------------------------------
-# Run the agent — pass all args through
+# Run the agent — pass all args through and tee output to logs/
 # -----------------------------------------------------------
+LOG_DIR="$SCRIPT_DIR/logs"
+mkdir -p "$LOG_DIR"
+
+NODE_NAME="$(hostname)"
+TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
+LOG_FILE="$LOG_DIR/run_${NODE_NAME}_${TIMESTAMP}.log"
+
 echo ""
-exec "$PYTHON_BIN" -m src.main "$@"
+echo "[Gillsystems AI Stack Updater] Logging to: $LOG_FILE"
+echo ""
+
+set +e
+"$PYTHON_BIN" -u -m src.main "$@" 2>&1 | tee -a "$LOG_FILE"
+EXIT_CODE=${PIPESTATUS[0]}
+set -e
+
+echo ""
+if [[ $EXIT_CODE -eq 0 ]]; then
+    echo "[Gillsystems AI Stack Updater] Completed successfully."
+elif [[ $EXIT_CODE -eq 130 ]]; then
+    echo "[Gillsystems AI Stack Updater] Cancelled by user."
+else
+    echo "[Gillsystems AI Stack Updater] ERROR: Exit code $EXIT_CODE"
+    echo "[Gillsystems AI Stack Updater] Review log: $LOG_FILE"
+fi
+
+exit $EXIT_CODE

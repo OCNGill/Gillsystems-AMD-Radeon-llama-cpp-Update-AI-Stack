@@ -13,7 +13,8 @@ b) The **AMD GPU** remains the primary compute apparatus for all offloaded nodes
 - **MTP Capability:** The `llama.cpp` Windows binaries compiled by our local structural builder successfully integrate C++ engine-level support for MTP (Multi-Token Prediction) and Speculative Decoding, exposed via the `--spec-type draft-mtp` flag.
 - **Gemma 4 Compatibility:** Standard `Gemma-4` `.gguf` archives load and execute at peak optimization across the AMD stack using standard flash attention (`-fa on`).
 - **Upstream Limitation:** We identified that `ggml-org/llama.cpp`'s `convert_hf_to_gguf.py` script strictly limits MTP generation to **Qwen 3.5/3.6** architectures. Consequently, Gemma 4 weight conversions currently lack the `mtp-*` draft tensors. 
-- **Conclusion:** Gemma 4 runs flawlessly. While MTP arguments can be passed to our server binaries, speculative decoding will either gracefully ignore the flag or fall back to standard generation until the upstream conversion scripts are updated for Gemma 4 architectures.
+- **Runtime Confirmation:** A live `llama-server.exe` launch against `gemma-4-31B.Q4_K_M.gguf` confirmed the current failure mode: `context type MTP required but model doesn't contain MTP layers`, followed by `failed to create MTP context`.
+- **Conclusion:** Gemma 4 runs correctly on the Windows HIP build, but only when launched **without** `--spec-type draft-mtp` and related draft-token flags. Until upstream conversion scripts add Gemma 4 MTP tensors, Gemma launchers must stay on standard decoding.
 
 ## 3. GPU Primary Compute (ROCm / HIP)
 - **Layer Offloading:** Enforcing `-ngl 99` in our `.bat` deployments guarantees total layer saturation into VRAM.

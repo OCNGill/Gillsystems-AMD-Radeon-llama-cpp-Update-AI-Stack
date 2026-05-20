@@ -11,14 +11,25 @@ Launch the updater agent by double-clicking the root batch script or running it 
 ```bat
 update-ai-stack.bat
 ```
-*(You will be asked to elevate privileges if not already running as Administrator.)*
+*(You will be asked to elevate privileges if not already running as Administrator. A timestamped run log is written to `logs/`.)*
 
 ### Linux
 Launch the updater agent directly from your terminal:
 ```bash
 ./update-ai-stack.sh
 ```
-*(The script will request `sudo` permissions as needed.)*
+*(The script will request `sudo` permissions as needed. A timestamped run log is written to `logs/`.)*
+
+### Example llama.cpp Server Launchers
+
+Editable per-node example server launchers are included in the repo root:
+
+```text
+Gillsystems_example_server_edit_per_node.bat
+Gillsystems_example_server_edit_per_node.sh
+```
+
+They log server output to `logs/` and intentionally leave Gemma 4 MTP flags disabled until upstream GGUF conversion adds Gemma-compatible MTP layers.
 
 ---
 

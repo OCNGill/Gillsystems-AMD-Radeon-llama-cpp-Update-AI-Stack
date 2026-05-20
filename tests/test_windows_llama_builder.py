@@ -88,6 +88,25 @@ def test_bundle_hip_runtime_libraries_copies_matching_dlls(tmp_path: Path) -> No
     assert not (install_bin / "clang.dll").exists()
 
 
+def test_bundle_rocblas_runtime_support_copies_tensile_library_tree(tmp_path: Path) -> None:
+    hip_root = tmp_path / "rocm"
+    rocblas_library = hip_root / "bin" / "rocblas" / "library"
+    rocblas_library.mkdir(parents=True)
+    (rocblas_library / "TensileLibrary_lazy_gfx1100.dat").write_text("stub\n", encoding="ascii")
+
+    arch_dir = rocblas_library / "gfx1100"
+    arch_dir.mkdir(parents=True)
+    (arch_dir / "kernel.co").write_text("stub\n", encoding="ascii")
+
+    install_bin = tmp_path / "install" / "bin"
+
+    bundled = windows_llama_builder._bundle_rocblas_runtime_support(str(hip_root), install_bin)
+
+    assert bundled == install_bin / "rocblas" / "library"
+    assert (install_bin / "rocblas" / "library" / "TensileLibrary_lazy_gfx1100.dat").exists()
+    assert (install_bin / "rocblas" / "library" / "gfx1100" / "kernel.co").exists()
+
+
 def test_validate_uses_runtime_dirs_and_skips_failed_exit_codes(tmp_path: Path) -> None:
     cfg = _make_cfg(tmp_path)
     builder = LlamaBuilderWindows(cfg, ["gfx1100"])
@@ -96,6 +115,7 @@ def test_validate_uses_runtime_dirs_and_skips_failed_exit_codes(tmp_path: Path) 
     install_bin.mkdir(parents=True)
     (install_bin / "llama-cli.exe").write_text("stub\n", encoding="ascii")
     (install_bin / "llama-server.exe").write_text("stub\n", encoding="ascii")
+    (install_bin / "rocblas" / "library").mkdir(parents=True)
 
     hip_root = tmp_path / "rocm"
     (hip_root / "bin").mkdir(parents=True)
@@ -104,6 +124,7 @@ def test_validate_uses_runtime_dirs_and_skips_failed_exit_codes(tmp_path: Path) 
     results = [
         MagicMock(returncode=126, stdout="", stderr="libhipblas.dll missing"),
         MagicMock(returncode=0, stdout="llama-server build 1\n", stderr=""),
+        MagicMock(returncode=0, stdout="--spec-type\n draft-mtp\n", stderr=""),
     ]
 
     def _fake_run(cmd: list[str], **kwargs):
@@ -114,10 +135,13 @@ def test_validate_uses_runtime_dirs_and_skips_failed_exit_codes(tmp_path: Path) 
          patch("src.windows.llama_builder.subprocess.run", side_effect=_fake_run):
         builder._validate()
 
-    assert len(calls) == 2
+    assert len(calls) == 3
     assert calls[0][0][0].endswith("llama-cli.exe")
     assert calls[1][0][0].endswith("llama-server.exe")
+    assert calls[2][0][0].endswith("llama-server.exe")
+    assert calls[2][0][1] == "--help"
 
     runtime_path = calls[0][1]["env"]["PATH"].split(";")
     assert runtime_path[0] == str(install_bin)
     assert str(hip_root / "bin") in runtime_path
+    assert calls[0][1]["env"]["ROCBLAS_TENSILE_LIBPATH"] == str(install_bin / "rocblas" / "library")

@@ -361,7 +361,10 @@ class LlamaBuilderWindows:
             )
             help_text = (result.stdout or "") + (result.stderr or "")
             if result.returncode == 0 and all(marker in help_text for marker in _MTP_HELP_MARKERS):
-                print_success(f"{mtp_check_binary.name}: speculative MTP options detected.")
+                print_success(
+                    f"{mtp_check_binary.name}: speculative MTP CLI options detected "
+                    "(binary capability only; model GGUF must include MTP layers)."
+                )
             else:
                 print_warning(
                     f"{mtp_check_binary.name} did not advertise draft-mtp support in --help output."
