@@ -26,7 +26,7 @@ from src.cli import (
     print_warning,
 )
 from src.config import load_config, GillsystemsAIStackUpdaterConfig
-from src.gpu_detect import GPUDetector
+from src.gpu_detect import GPUDetector, get_compute_tier
 from src.privilege import ensure_admin, is_admin
 from src.state_manager import StateManager, StepStatus
 from src.version_intel import VersionIntel, UpdateManifest
@@ -111,9 +111,13 @@ class Orchestrator:
 
             # Phase 3: ROCm/HIP update
             if not self.skip_rocm and self.manifest.rocm.needs_update:
-                reboot_required = self._step_update_rocm()
-                if reboot_required:
-                    return self._initiate_reboot("post_rocm_resume")
+                tier = get_compute_tier(gpu_targets)
+                if tier == 2:
+                    print_info("Tier 2 hardware (mobile/edge/APU) detected. Skipping ROCm/HIP SDK installation (will use Vulkan fallback).")
+                else:
+                    reboot_required = self._step_update_rocm()
+                    if reboot_required:
+                        return self._initiate_reboot("post_rocm_resume")
 
             # Phase 4: llama.cpp build
             # Always build when --force is set, even if version check says current.

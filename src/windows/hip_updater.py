@@ -85,10 +85,13 @@ class HIPUpdater:
         base = self.cfg.repo.hip_sdk_download_base
 
         # Try common recent patterns:
-        # https://repo.radeon.com/rocm/msi/<version>/HIP-SDK-Installer-<version>.0.exe
-        known_recent = ["6.3.1", "6.3.0", "6.2.4", "6.2.0", "6.1.0"]
+        known_recent = ["7.2.2", "7.2.1", "7.2.0", "7.1.0", "7.0.0", "6.3.1", "6.3.0", "6.2.4", "6.2.0", "6.1.0"]
 
-        with httpx.Client(timeout=15, follow_redirects=True) as client:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+
+        with httpx.Client(timeout=15, follow_redirects=True, headers=headers) as client:
             for ver in known_recent:
                 # AMD uses various naming conventions: version.0.exe, v<version>.exe
                 variants = [
@@ -98,8 +101,9 @@ class HIPUpdater:
                 ]
                 for url in variants:
                     try:
-                        resp = client.head(url)
-                        if resp.status_code == 200:
+                        # Avoid HEAD blocking via lightweight Range GET
+                        resp = client.get(url, headers={"Range": "bytes=0-0"})
+                        if resp.status_code in (200, 206):
                             return url, ver
                     except Exception:
                         continue
@@ -107,13 +111,13 @@ class HIPUpdater:
         # Valid fallback to a stable release known to work
         fallback_url = "https://download.amd.com/developer/eula/rocm-hub/AMD-Software-PRO-Edition-24.Q3-Win10-Win11-For-HIP.exe"
         try:
-            with httpx.Client(timeout=10, follow_redirects=True) as client:
-                if client.head(fallback_url).status_code == 200:
+            with httpx.Client(timeout=10, follow_redirects=True, headers=headers) as client:
+                if client.get(fallback_url, headers={"Range": "bytes=0-0"}).status_code in (200, 206):
                     return fallback_url, "6.1.2"
         except Exception:
             pass
 
-        return None, None
+        return fallback_url, "6.1.2"
 
 
 
@@ -139,6 +143,11 @@ class HIPUpdater:
         dest = tmp_dir / filename
 
         try:
+            # Configure standard browser User-Agent globally for urllib downloads
+            opener = urllib.request.build_opener()
+            opener.addheaders = [("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")]
+            urllib.request.install_opener(opener)
+
             urllib.request.urlretrieve(url, str(dest))
             print_success(f"Downloaded to {dest}")
             return dest
