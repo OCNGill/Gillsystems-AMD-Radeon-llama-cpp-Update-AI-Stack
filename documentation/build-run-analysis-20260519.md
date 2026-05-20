@@ -220,12 +220,12 @@ All targets installed successfully:
 ▸   rocminfo: not available (optional)
 ✔  llama-cli: version: 86 (b28a2f3)
 ✔  llama-server: version: 86 (b28a2f3)
-✔  llama-server.exe: speculative MTP options detected.
+✔  llama-server.exe: speculative MTP CLI options detected (binary capability only; model GGUF must include MTP layers).
 ```
 
 - `hipcc` confirms **HIP 7.2.26024** active in PATH
 - `llama-cli` and `llama-server` both report **version b86 (b28a2f3)** — matches build target b9222 tag, commit b28a2f3
-- **`speculative MTP options detected`** on llama-server — Multi-Token Prediction support is compiled in and detected. This is significant: llama-server can leverage Gemma 4's MTP architecture for speculative decoding. The TensileLibrary integration work from the last delivery feeds directly into this.
+- **`speculative MTP CLI options detected`** on llama-server confirms the binary was built with MTP-capable code paths, but that is **not** sufficient for Gemma 4 inference. A live Gemma 4 launch failed with `model doesn't contain MTP layers`, which means the current GGUF conversion path still lacks Gemma-specific MTP tensors. Gemma launchers should omit `--spec-type draft-mtp` until upstream support lands.
 - `rocm-smi` and `rocminfo` are optional validation tools, not installed — acceptable
 
 ---
@@ -248,7 +248,7 @@ All targets installed successfully:
 | rocWMMA / FlashAttention | Disabled (Windows SDK limitation) |
 | OpenSSL / HTTPS | Disabled (not installed) |
 | OpenMP | Disabled (not found) |
-| Speculative MTP | **Enabled** |
+| Speculative MTP | **Binary support present; Gemma 4 GGUFs cannot use it yet** |
 | Web UI | Embedded prebuilt (b86) |
 
 ---
@@ -300,16 +300,18 @@ CURRENT STATE as of 2026-05-19:
 - Installed to: C:\Gillsystems\llama.cpp\
 - HIP version: 7.2.26024 (gfx1100, RX 7900 XTX)
 - 19 HIP runtime DLLs + rocBLAS TensileLibrary bundled
-- llama-cli.exe and llama-server.exe: version b86 (b28a2f3), speculative MTP enabled
+- llama-cli.exe and llama-server.exe: version b86 (b28a2f3), speculative MTP CLI options present
+- Gemma 4 GGUFs must run without --spec-type draft-mtp because current upstream conversion does not emit Gemma MTP layers
 
 PENDING ISSUES (in priority order):
 1. CMake deprecation warnings: update src/windows/llama_builder.py to use 
    -DLLAMA_BUILD_UI=OFF and -DLLAMA_USE_PREBUILT_UI=ON (replacing WEBUI variants).
 2. Suppress HIP -Wignored-attributes noise: add -Wno-ignored-attributes to HIP cflags
    in src/windows/llama_builder.py to reduce log volume by ~90%.
-3. LIVE INFERENCE VALIDATION: run llama-cli.exe against a real GGUF model to confirm
+3. GEMMA RUNTIME GUIDANCE: keep Gemma launchers off MTP flags until upstream GGUF conversion adds Gemma MTP layers.
+4. LIVE INFERENCE VALIDATION: run llama-cli.exe against a real GGUF model to confirm
    GPU inference pipeline works end-to-end with gfx1100 on Windows.
-4. vcvarsall.bat warning: investigate and suppress if MSVC env is not needed for HIP builds.
+5. vcvarsall.bat warning: investigate and suppress if MSVC env is not needed for HIP builds.
 
 KEY FILES:
 - src/windows/llama_builder.py — Windows build orchestration (CMake args, env setup)

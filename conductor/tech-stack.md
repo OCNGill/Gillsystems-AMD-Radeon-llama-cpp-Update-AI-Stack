@@ -21,6 +21,10 @@
 ## Windows First-Run Bootstrap
 - **`bootstrap.ps1`** — Self-contained PowerShell script called by `update-ai-stack.bat`; auto-locates Python (3.11–3.14), installs pip deps, logs full output to `logs/`, always keeps the window open with errors visible
 
+## Example Server Launchers
+- **`Gillsystems_example_server_edit_per_node.bat`** — Windows `llama-server.exe` example launcher with timestamped `logs/` output, portable rocBLAS Tensile path wiring, and Gemma-safe defaults (no MTP flags)
+- **`Gillsystems_example_server_edit_per_node.sh`** — Linux `llama-server` example launcher with timestamped `logs/` output and Gemma-safe defaults (no MTP flags)
+
 ## OS Targets
 - **Linux:** Ubuntu 22.04 / 24.04 (primary), Fedora (secondary), SteamOS / Arch (Steam Deck)
 - **Windows:** Windows 10 / 11 with HIP SDK 7.x support

@@ -89,7 +89,18 @@ chmod +x update-ai-stack.sh
 ./update-ai-stack.sh
 ```
 
-Re-runs with `sudo` automatically if not already root. Installs Python dependencies via pip if missing.
+Re-runs with `sudo` automatically if not already root. Installs Python dependencies via pip if missing. Both launchers write timestamped run logs into `logs/`.
+
+### Example llama.cpp Server Launchers
+
+The repo root also includes editable per-node example server launchers for direct `llama-server` use:
+
+```text
+Gillsystems_example_server_edit_per_node.bat
+Gillsystems_example_server_edit_per_node.sh
+```
+
+They create timestamped server logs in `logs/` and intentionally omit Gemma 4 MTP flags until upstream GGUF conversion adds Gemma MTP layers.
 
 ### Dry Run (safe preview — no changes made)
 
