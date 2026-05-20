@@ -90,17 +90,30 @@ class HIPUpdater:
 
         with httpx.Client(timeout=15, follow_redirects=True) as client:
             for ver in known_recent:
-                url = f"{base}/{ver}/HIP-SDK-Installer-{ver}.0.exe"
-                try:
-                    resp = client.head(url)
-                    if resp.status_code == 200:
-                        return url, ver
-                except Exception:
-                    continue
+                # AMD uses various naming conventions: version.0.exe, v<version>.exe
+                variants = [
+                    f"{base}/{ver}/HIP-SDK-Installer-{ver}.0.exe",
+                    f"{base}/{ver}/HIP-SDK-Installer-v{ver}.exe",
+                    f"{base}/{ver}/HIP-SDK-Installer-{ver}.exe"
+                ]
+                for url in variants:
+                    try:
+                        resp = client.head(url)
+                        if resp.status_code == 200:
+                            return url, ver
+                    except Exception:
+                        continue
 
-        # Fallback: return latest known (user can also manually pin in config)
-        url = f"{base}/6.3.1/HIP-SDK-Installer-6.3.1.0.exe"
-        return url, "6.3.1"
+        # Valid fallback to a stable release known to work
+        fallback_url = "https://download.amd.com/developer/eula/rocm-hub/AMD-Software-PRO-Edition-24.Q3-Win10-Win11-For-HIP.exe"
+        try:
+            with httpx.Client(timeout=10, follow_redirects=True) as client:
+                if client.head(fallback_url).status_code == 200:
+                    return fallback_url, "6.1.2"
+        except Exception:
+            pass
+
+        return None, None
 
 
 
