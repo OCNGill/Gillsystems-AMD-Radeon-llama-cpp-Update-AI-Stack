@@ -23,6 +23,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Steam Deck critical relock-mid-run bug** (commit `agent-round3`): `_install_linux_build_prerequisites()` was calling `steamos-readonly enable` in its `finally` block even when `bootstrap-linux.sh` had already unlocked the filesystem globally. This re-locked the FS before `_build()` ran, causing a read-only filesystem error during cmake. Fix: guard the lock/unlock cycle with `os.environ.get("STEAMOS_UNLOCKED") == "1"`.
+- **Steam Deck `use_hip` redundant computation**: `bool(shutil.which("hipcc"))` was computed independently in `_preflight_check()`, `_configure_cmake()`, and `_build()`. Now computed once in `LlamaBuilderLinux.__init__` as `self.use_hip`, used universally.
+- **Version check queried wrong fork on Linux** (`version_intel.py`): Linux version check was querying `ROCm/llama.cpp` (AMD tracking fork) instead of `ggml-org/llama.cpp`, causing spurious "Could not determine latest version" warnings. Both platforms now use the ggml-org fork to match actual build target.
+- **Opaque `SyntaxError` / `ImportError` on llama engine load** (`main.py`): Dynamic imports of `LlamaBuilderLinux` and `LlamaBuilderWindows` are now wrapped in `try/except (ImportError, SyntaxError)` with a descriptive `RuntimeError` pointing to the build engine file.
+- **Steam Deck cleanup() chown-after-relock ordering** (`bootstrap-linux.sh`): `restore_user_owned_paths()` only ran as root (never triggered in normal non-root flow). Restructured `cleanup()` to: kill keepalive → chown repo dir back to original owner → re-lock filesystem. Root-owned artifacts from privileged subprocess steps are now cleaned up before read-only mode is restored.
+- **Steam Deck `llama_builder.py` corrupted by raw diff text** (commit `a23d109`): File was overwritten with git diff markers in a prior commit (`e93fe78`). Restored from `63a2012` and applied intended `DGGML_HIP_ROCWMMA_FATTN=OFF` change.
+- **Steam Deck 5-issue hardening** (commit `0172ed8`): `LLAMA_HIP_UMA` flag now HIP-only; symlink `RuntimeError` surfaced correctly; `_detect_distro()` fallback parses `/etc/os-release` key=value pairs; SteamOS `readonly` `finally` block wrapped in `try/except`; `config.py` Pydantic default aligned to `ggml-org/llama.cpp.git`.
+- **Steam Deck global SteamOS unlock** (commit `79508bf`): `bootstrap-linux.sh` now calls `steamos-readonly disable` at session establishment (inside `ensure_sudo_session()`), exports `STEAMOS_UNLOCKED=1`, and re-locks in the `cleanup()` trap on exit.
 - **Windows Tier 2 Vulkan fallback**: CMake now points `CMAKE_PREFIX_PATH` at the LunarG Vulkan SDK package root so `SPIRV-Headers` is discovered reliably during `llama.cpp` configure.
 - **Windows PATH validation messaging**: the updater now refreshes the current process PATH and tells users where the install and source-root launcher bins actually live.
 

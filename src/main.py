@@ -266,11 +266,23 @@ class Orchestrator:
             return
 
         if sys.platform == "linux":
-            from src.linux.llama_builder import LlamaBuilderLinux
+            try:
+                from src.linux.llama_builder import LlamaBuilderLinux
+            except (ImportError, SyntaxError) as exc:
+                raise RuntimeError(
+                    f"Failed to load Linux build engine: {type(exc).__name__}: {exc}. "
+                    "Check src/linux/llama_builder.py for syntax or import errors."
+                ) from exc
             builder = LlamaBuilderLinux(self.cfg, gpu_targets)
             builder.build_and_install()
         elif sys.platform == "win32":
-            from src.windows.llama_builder import LlamaBuilderWindows
+            try:
+                from src.windows.llama_builder import LlamaBuilderWindows
+            except (ImportError, SyntaxError) as exc:
+                raise RuntimeError(
+                    f"Failed to load Windows build engine: {type(exc).__name__}: {exc}. "
+                    "Check src/windows/llama_builder.py for syntax or import errors."
+                ) from exc
             builder = LlamaBuilderWindows(self.cfg, gpu_targets)
             builder.build_and_install()
         else:
