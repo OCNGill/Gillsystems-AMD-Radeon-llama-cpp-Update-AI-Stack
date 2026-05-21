@@ -103,7 +103,7 @@ class LlamaBuilderLinux:
     # ------------------------------------------------------------------
 
     def _clone_or_pull(self) -> None:
-        # Linux uses AMD's ROCm fork per AMD documentation
+        # Uses the mainstream ggml-org fork (configured via llama_cpp_repo in config)
         repo_url = self.cfg.repo.llama_cpp_repo
 
         if self.cfg.behavior.dry_run:
@@ -186,8 +186,9 @@ class LlamaBuilderLinux:
             except Exception as exc:
                 print_warning(f"hipconfig query failed: {exc} — using default env")
 
-        if get_compute_tier(self.gpu_targets) == 2:
-            print_info("Tier 2 Mobile/Edge architecture detected. Injecting LLAMA_HIP_UMA=1.")
+        use_hip = bool(shutil.which("hipcc"))
+        if use_hip and get_compute_tier(self.gpu_targets) == 2:
+            print_info("Tier 2 Mobile/Edge + HIP architecture detected. Injecting LLAMA_HIP_UMA=1.")
             env["LLAMA_HIP_UMA"] = "1"
 
         if self._use_ninja:
@@ -347,7 +348,8 @@ def _symlink_binaries(src_dir: Path, dest_dir: Path, *, privileged: bool = False
                         link.unlink()
                     link.symlink_to(binary)
                 logger.debug("Symlinked %s → %s", binary, link)
-            except OSError as exc:
+            except (OSError, RuntimeError) as exc:
+                print_warning(f"Could not symlink {binary.name} → {link}: {exc}")
                 logger.warning("Could not symlink %s: %s", binary, exc)
 
 
@@ -358,8 +360,13 @@ def _detect_distro() -> str:
         return (info.get("ID", "") + " " + info.get("ID_LIKE", "")).lower().strip()
     except AttributeError:
         try:
+            data: dict[str, str] = {}
             with open("/etc/os-release", encoding="utf-8") as fh:
-                return fh.read().lower()
+                for line in fh:
+                    if "=" in line:
+                        k, _, v = line.partition("=")
+                        data[k.strip()] = v.strip().strip('"\'')
+            return (data.get("ID", "") + " " + data.get("ID_LIKE", "")).lower().strip()
         except OSError:
             return ""
 
@@ -588,8 +595,14 @@ def _install_linux_build_prerequisites(
             _run_privileged(command, env=env)
     finally:
         if steamos:
-            _run_privileged(["steamos-readonly", "enable"])
-            print_info("SteamOS filesystem re-locked (read-only restored).")
+            try:
+                _run_privileged(["steamos-readonly", "enable"])
+                print_info("SteamOS filesystem re-locked (read-only restored).")
+            except RuntimeError as enable_exc:
+                print_warning(
+                    f"Failed to re-lock SteamOS filesystem: {enable_exc}. "
+                    "Manually run: sudo steamos-readonly enable"
+                )
 
     print_success("Linux build prerequisites installed.")
     return installs_ninja
