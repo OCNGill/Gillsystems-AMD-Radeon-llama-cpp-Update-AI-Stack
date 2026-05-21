@@ -8,6 +8,32 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+resolve_node_name() {
+    local candidate=""
+
+    if [[ -n "${GILLSYSTEMS_NODE_NAME:-}" ]]; then
+        candidate="$GILLSYSTEMS_NODE_NAME"
+    elif [[ -n "${HOSTNAME:-}" ]]; then
+        candidate="$HOSTNAME"
+    elif command -v hostname >/dev/null 2>&1; then
+        candidate="$(hostname 2>/dev/null || true)"
+    elif [[ -x /usr/bin/hostname ]]; then
+        candidate="$(/usr/bin/hostname 2>/dev/null || true)"
+    elif [[ -r /etc/hostname ]]; then
+        candidate="$(tr -d '[:space:]' < /etc/hostname)"
+    elif command -v uname >/dev/null 2>&1; then
+        candidate="$(uname -n 2>/dev/null || true)"
+    elif [[ -x /usr/bin/uname ]]; then
+        candidate="$(/usr/bin/uname -n 2>/dev/null || true)"
+    fi
+
+    if [[ -z "$candidate" ]]; then
+        candidate="unknown-node"
+    fi
+
+    printf '%s\n' "$candidate"
+}
+
 # Explicitly set the library path for local custom builds
 
 MODEL_PATH="/home/gillsystems-htpc/Desktop/Models/gemma-4-E4B.Q6_K.gguf"
@@ -34,7 +60,7 @@ done
 mkdir -p "$LOG_DIR"
 
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
-NODE_NAME="$(hostname)"
+NODE_NAME="$(resolve_node_name)"
 LOG_FILE="$LOG_DIR/server_${NODE_NAME}_${TIMESTAMP}.log"
 
 echo "Starting Gillsystems HTPC LLM Server..."

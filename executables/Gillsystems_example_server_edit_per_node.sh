@@ -12,6 +12,32 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+resolve_node_name() {
+    local candidate=""
+
+    if [[ -n "${GILLSYSTEMS_NODE_NAME:-}" ]]; then
+        candidate="$GILLSYSTEMS_NODE_NAME"
+    elif [[ -n "${HOSTNAME:-}" ]]; then
+        candidate="$HOSTNAME"
+    elif command -v hostname >/dev/null 2>&1; then
+        candidate="$(hostname 2>/dev/null || true)"
+    elif [[ -x /usr/bin/hostname ]]; then
+        candidate="$(/usr/bin/hostname 2>/dev/null || true)"
+    elif [[ -r /etc/hostname ]]; then
+        candidate="$(tr -d '[:space:]' < /etc/hostname)"
+    elif command -v uname >/dev/null 2>&1; then
+        candidate="$(uname -n 2>/dev/null || true)"
+    elif [[ -x /usr/bin/uname ]]; then
+        candidate="$(/usr/bin/uname -n 2>/dev/null || true)"
+    fi
+
+    if [[ -z "$candidate" ]]; then
+        candidate="unknown-node"
+    fi
+
+    printf '%s\n' "$candidate"
+}
+
 LLAMA_BIN_DIR="/opt/gillsystems/llama.cpp/bin"
 MODEL_PATH="/models/gemma-4-31B.Q4_K_M.gguf"
 HOST="0.0.0.0"
@@ -30,7 +56,7 @@ LOG_DIR="$SCRIPT_DIR/logs"
 mkdir -p "$LOG_DIR"
 
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
-NODE_NAME="$(hostname)"
+NODE_NAME="$(resolve_node_name)"
 LOG_FILE="$LOG_DIR/server_${NODE_NAME}_${TIMESTAMP}.log"
 
 echo "Starting Gillsystems example server..."
@@ -51,12 +77,6 @@ fi
 if [[ ! -f "$MODEL_PATH" ]]; then
     echo "[Gillsystems] ERROR: Model not found at $MODEL_PATH"
     exit 1
-fi
-
-# Link binary and library paths dynamically for canonical installs
-LLAMA_LIB_DIR="/opt/gillsystems/llama.cpp/lib"
-if [[ -d "$LLAMA_LIB_DIR" ]]; then
-    export LD_LIBRARY_PATH="$LLAMA_LIB_DIR:${LD_LIBRARY_PATH:-}"
 fi
 
 if [[ -d "$TENSILE_LIBPATH" ]]; then
@@ -89,3 +109,5 @@ else
     echo "[Gillsystems] ERROR: Server exited with code $EXIT_CODE"
     echo "[Gillsystems] Review log: $LOG_FILE"
 fi
+
+exit $EXIT_CODE
