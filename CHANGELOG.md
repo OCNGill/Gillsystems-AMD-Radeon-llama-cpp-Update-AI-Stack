@@ -23,6 +23,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Steam Deck `PermissionError` on pacman keyring stat** (`llama_builder.py`): `_has_initialized_pacman_keyring()` called `Path.exists()` on files inside `/etc/pacman.d/gnupg/` (root:root 700). Running as non-root `deck` user this raises `PermissionError` even after `steamos-readonly disable`, aborting the entire run. Wrapped in `try/except PermissionError` returning `False` so `pacman-key --init` is invoked via the privileged sudo runner as intended.
 - **Steam Deck critical relock-mid-run bug** (commit `agent-round3`): `_install_linux_build_prerequisites()` was calling `steamos-readonly enable` in its `finally` block even when `bootstrap-linux.sh` had already unlocked the filesystem globally. This re-locked the FS before `_build()` ran, causing a read-only filesystem error during cmake. Fix: guard the lock/unlock cycle with `os.environ.get("STEAMOS_UNLOCKED") == "1"`.
 - **Steam Deck `use_hip` redundant computation**: `bool(shutil.which("hipcc"))` was computed independently in `_preflight_check()`, `_configure_cmake()`, and `_build()`. Now computed once in `LlamaBuilderLinux.__init__` as `self.use_hip`, used universally.
 - **Version check queried wrong fork on Linux** (`version_intel.py`): Linux version check was querying `ROCm/llama.cpp` (AMD tracking fork) instead of `ggml-org/llama.cpp`, causing spurious "Could not determine latest version" warnings. Both platforms now use the ggml-org fork to match actual build target.

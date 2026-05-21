@@ -474,11 +474,17 @@ _STEAMOS_KEYRING_CANDIDATES = ("archlinux", "holo", "jupiter", "steamos")
 
 
 def _has_initialized_pacman_keyring() -> bool:
-    return (
-        _PACMAN_KEYRING_DIR.exists()
-        and (_PACMAN_KEYRING_DIR / "pubring.gpg").exists()
-        and (_PACMAN_KEYRING_DIR / "trustdb.gpg").exists()
-    )
+    # /etc/pacman.d/gnupg/ is root:root 700 — a non-root process cannot stat
+    # files inside it even when the filesystem is unlocked.  Treat any access
+    # denial as "not initialised" so the privileged pacman-key --init path runs.
+    try:
+        return (
+            _PACMAN_KEYRING_DIR.exists()
+            and (_PACMAN_KEYRING_DIR / "pubring.gpg").exists()
+            and (_PACMAN_KEYRING_DIR / "trustdb.gpg").exists()
+        )
+    except PermissionError:
+        return False
 
 
 def _detect_available_pacman_keyrings() -> list[str]:
