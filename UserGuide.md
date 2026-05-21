@@ -22,14 +22,21 @@ Launch the updater agent directly from your terminal:
 
 ### Example llama.cpp Server Launchers
 
-Editable per-node example server launchers are included in the repo root:
+Editable shared per-node example server launchers are included in the repo root:
 
 ```text
 Gillsystems_example_server_edit_per_node.bat
 Gillsystems_example_server_edit_per_node.sh
 ```
 
-They log server output to `logs/` and intentionally leave Gemma 4 MTP flags disabled until upstream GGUF conversion adds Gemma-compatible MTP layers.
+Dedicated Tier 2 server-only launchers for the smaller nodes live in `executables/`:
+
+```text
+executables/Gillsystems_Laptop_iGPU_server_example.bat
+executables/Gillsystems_SteamDeck_iGPU_server_example.sh
+```
+
+They all log server output to `logs/` and intentionally leave Gemma 4 MTP flags disabled until upstream GGUF conversion adds Gemma-compatible MTP layers. The updater still installs binaries to the canonical platform root, then mirrors them into `<llama_cpp_source>/bin` so local source-tree launchers have a stable executable path after each build.
 
 ---
 
@@ -43,7 +50,8 @@ Gillsystems AI Stack Updater implements a fully reboot-resilient architecture th
   - **Windows (`hip_updater.py`):** Operates the AMD HIP SDK 7.x Installer silently.
 - Platform-aware `LlamaBuilder` selects the correct upstream source and builds with HIP:
   - **Linux:** Clones AMD's official [`ROCm/llama.cpp`](https://github.com/ROCm/llama.cpp) fork (per AMD documentation). Sets `HIPCXX` and `HIP_PATH` from `hipconfig` before building. CMake flags include `-DGGML_HIP=ON`, `-DGGML_HIP_ROCWMMA_FATTN=ON`, and `-DLLAMA_CURL=ON`.
-  - **Windows:** Clones [`ggml-org/llama.cpp`](https://github.com/ggml-org/llama.cpp) (AMD has no native Windows ROCm build documentation). Uses Ninja + MSVC with auto-detected HIP SDK path.
+  - **Windows:** Clones [`ggml-org/llama.cpp`](https://github.com/ggml-org/llama.cpp) (AMD has no native Windows ROCm build documentation). Uses Ninja + MSVC with auto-detected HIP SDK path for Tier 1 nodes, and configures Tier 2 Vulkan fallback through the LunarG Vulkan SDK when HIP is not available.
+  - **Install layout:** Successful installs land in the canonical platform root (`C:\Gillsystems\llama.cpp\bin` on Windows, `/opt/gillsystems/llama.cpp/bin` on Linux) and are mirrored into `<llama_cpp_source>/bin` for direct testing from the active source tree.
   - GPU architecture targets (`AMDGPU_TARGETS`) are auto-detected from WMI / rocminfo and cover all Gillsystems nodes: `gfx1100` (7900 XTX), `gfx1102` (RX 7600), `gfx1033` (Steam Deck), `gfx1030` (RDNA 2), `gfx906` (Vega 20), and more.
 
 ### 🔧 Force a Clean Rebuild

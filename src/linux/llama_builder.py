@@ -206,6 +206,10 @@ class LlamaBuilderLinux:
         if bin_dir.exists():
             _symlink_binaries(bin_dir, Path("/usr/local/bin"))
 
+        mirrored_bin_dir = _mirror_install_bin_tree(bin_dir, self.source_dir / "bin")
+        if mirrored_bin_dir:
+            print_info(f"Mirrored installed binaries into {mirrored_bin_dir}")
+
     # ------------------------------------------------------------------
     # Validate
     # ------------------------------------------------------------------
@@ -243,6 +247,23 @@ def _run(cmd: list[str], timeout: int = 3600, env: dict | None = None) -> None:
     result = subprocess.run(cmd, timeout=timeout, env=env)
     if result.returncode != 0:
         raise RuntimeError(f"Command failed (exit {result.returncode}): {' '.join(cmd)}")
+
+
+def _mirror_install_bin_tree(install_bin: Path, source_bin: Path) -> Path | None:
+    """Copy the canonical install bin tree into the source-root bin directory."""
+    if not install_bin.exists():
+        return None
+
+    if install_bin.resolve(strict=False) == source_bin.resolve(strict=False):
+        return None
+
+    if source_bin.is_symlink() or source_bin.is_file():
+        source_bin.unlink()
+    elif source_bin.exists():
+        shutil.rmtree(source_bin)
+
+    shutil.copytree(install_bin, source_bin)
+    return source_bin
 
 
 def _symlink_binaries(src_dir: Path, dest_dir: Path) -> None:

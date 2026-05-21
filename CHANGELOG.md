@@ -11,10 +11,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - **Example llama.cpp server launchers**: Added `Gillsystems_example_server_edit_per_node.bat` and `Gillsystems_example_server_edit_per_node.sh` in the repo root. Both create timestamped logs in `logs/` and ship Gemma-safe defaults with MTP flags omitted.
+- **Dedicated Tier 2 server-only launchers**: Added `executables/Gillsystems_Laptop_iGPU_server_example.bat` and `executables/Gillsystems_SteamDeck_iGPU_server_example.sh` for the Laptop and Steam Deck nodes without changing the shared root templates.
 
 ### Changed
 
 - **Linux launcher logging**: `update-ai-stack.sh` now mirrors Windows behavior by writing timestamped run logs into `logs/` while still streaming output to the console.
+- **llama.cpp install layout**: successful installs still land in the canonical platform root, but the updater now mirrors the resulting `bin` tree into `<llama_cpp_source>/bin` and reports both locations during validation.
+
+### Fixed
+
+- **Windows Tier 2 Vulkan fallback**: CMake now points `CMAKE_PREFIX_PATH` at the LunarG Vulkan SDK package root so `SPIRV-Headers` is discovered reliably during `llama.cpp` configure.
+- **Windows PATH validation messaging**: the updater now refreshes the current process PATH and tells users where the install and source-root launcher bins actually live.
 
 ## [1.0.1] — 2026-05-06 — Windows 11 Hardening (Current)
 

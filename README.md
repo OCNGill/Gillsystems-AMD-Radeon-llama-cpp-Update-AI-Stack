@@ -58,7 +58,7 @@ kernel drivers → amdgpu → ROCm runtime → HIP → rocBLAS → hipBLAS → l
 | **Dual-OS Sub-Agents** | Linux: `amdgpu-install` automation. Windows: silent HIP SDK install |
 | **GPU Architecture Auto-Detect** | `rocminfo`, `/sys/class/drm`, `lspci`, `wmi`, `hipInfo` — no manual config needed |
 | **Reboot Resilience** | SQLite checkpoint + systemd (Linux) / Scheduled Task (Windows) resume |
-| **llama.cpp HIP Build** | Clone, `cmake -DGGML_HIP=ON`, Ninja build, binaries to `PATH` |
+| **llama.cpp Build + Install Layout** | Clone, configure the correct backend automatically, install binaries into the canonical platform root, and mirror them into `<llama_cpp_source>/bin` for direct launcher use |
 | **Invocation-Only** | Does nothing unless explicitly run — no daemons, no watchers |
 | **Dry-Run Mode** | Full simulation with `--dry-run`, no system changes made |
 | **Rich Terminal UI** | Panels, progress bars, version tables, reboot countdown via `rich` |
@@ -93,14 +93,21 @@ Re-runs with `sudo` automatically if not already root. Installs Python dependenc
 
 ### Example llama.cpp Server Launchers
 
-The repo root also includes editable per-node example server launchers for direct `llama-server` use:
+The repo root keeps the shared editable per-node launcher templates for direct `llama-server` use:
 
 ```text
 Gillsystems_example_server_edit_per_node.bat
 Gillsystems_example_server_edit_per_node.sh
 ```
 
-They create timestamped server logs in `logs/` and intentionally omit Gemma 4 MTP flags until upstream GGUF conversion adds Gemma MTP layers.
+Dedicated Tier 2 server-only examples for the smaller nodes live under `executables/`:
+
+```text
+executables/Gillsystems_Laptop_iGPU_server_example.bat
+executables/Gillsystems_SteamDeck_iGPU_server_example.sh
+```
+
+All four launchers create timestamped server logs in `logs/` and intentionally omit Gemma 4 MTP flags until upstream GGUF conversion adds Gemma MTP layers. The updater installs binaries into the canonical platform root and mirrors them into `<llama_cpp_source>/bin`, so the dedicated Tier 2 launchers can prefer the clean source-root bin during local build/test runs.
 
 ### Dry Run (safe preview — no changes made)
 
@@ -133,7 +140,7 @@ python -m src.main --check-only
 
 **Linux extras:** `cmake`, `ninja-build`, `git`, `gcc`, `g++` (all installable via your distro package manager)
 
-**Windows extras:** [Visual Studio Build Tools 2022](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022) with C++ workload, [CMake](https://cmake.org/download/)
+**Windows extras:** [Visual Studio Build Tools 2022](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022) with C++ workload, [CMake](https://cmake.org/download/). Tier 2 Windows Vulkan fallback also requires the LunarG Vulkan SDK so `SPIRV-Headers` can be discovered during `llama.cpp` configure.
 
 ---
 
@@ -173,9 +180,9 @@ gpu:
   auto_detect: true
 
 paths:
-  llama_cpp_source:          "~/src/llama.cpp"        # where to clone source
-  llama_cpp_install_linux:   "/opt/gillsystems/llama.cpp"
-  llama_cpp_install_windows: "C:\\Gillsystems\\llama.cpp"
+  llama_cpp_source:          "~/src/llama.cpp"        # git/cmake checkout; binaries are mirrored into <source>/bin
+  llama_cpp_install_linux:   "/opt/gillsystems/llama.cpp"   # canonical Linux install root
+  llama_cpp_install_windows: "C:\\Gillsystems\\llama.cpp" # canonical Windows install root
   state_dir: "state"
   log_dir:   "logs"
 
@@ -358,8 +365,11 @@ Gillsystems-update-ai-engine-software/
 │   └── mocks/               # Mock helpers for integration tests
 ├── conductor/               # 7D Conductor project tracking
 │   └── tracks/T-001-agent-core/
+├── executables/             # Dedicated Tier 2 server-only example launchers
 ├── update-ai-stack.bat      # Windows launcher (UAC elevation)
 ├── update-ai-stack.sh       # Linux launcher (sudo elevation)
+├── Gillsystems_example_server_edit_per_node.bat  # Shared Windows server template
+├── Gillsystems_example_server_edit_per_node.sh   # Shared Linux server template
 ├── requirements.txt         # Runtime dependencies
 ├── pyproject.toml           # Project metadata + packaging
 └── README.md                # This file
