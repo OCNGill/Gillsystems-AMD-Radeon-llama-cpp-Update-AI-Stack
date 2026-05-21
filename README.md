@@ -145,7 +145,7 @@ python -m src.main --check-only
 | Disk Space | ~8 GB free (ROCm ~4 GB + llama.cpp build ~2 GB) |
 | Internet | Required for version checks and downloads |
 
-**Linux extras:** `cmake`, `ninja-build`, `git`, `gcc`, `g++` (all installable via your distro package manager)
+**Linux extras:** live Linux runs now auto-install missing `cmake`, `git`, compiler/build packages, and Tier 2 Vulkan development packages during the `llama.cpp` step on Debian/Ubuntu, Fedora, and SteamOS/Arch. If you pre-provision machines yourself, the expected packages are still `cmake`, `ninja-build`, `git`, `gcc`, `g++`, plus the Vulkan development packages required by your distro.
 
 **Windows extras:** [Visual Studio Build Tools 2022](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022) with C++ workload, [CMake](https://cmake.org/download/). Tier 2 Windows Vulkan fallback also requires the LunarG Vulkan SDK so `SPIRV-Headers` can be discovered during `llama.cpp` configure.
 

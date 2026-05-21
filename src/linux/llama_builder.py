@@ -11,6 +11,7 @@ import logging
 import os
 import shutil
 import subprocess
+import platform
 from pathlib import Path
 from typing import List
 
@@ -20,6 +21,16 @@ from src.gpu_detect import get_compute_tier
 from src.privilege import get_linux_sudo_prefix
 
 logger = logging.getLogger(__name__)
+
+_VULKAN_HEADER_CANDIDATES = (
+    Path("/usr/include/vulkan/vulkan.h"),
+    Path("/usr/local/include/vulkan/vulkan.h"),
+)
+
+_SPIRV_HEADER_CANDIDATES = (
+    Path("/usr/include/spirv/unified1/spirv.hpp"),
+    Path("/usr/local/include/spirv/unified1/spirv.hpp"),
+)
 
 
 class LlamaBuilderLinux:
@@ -47,29 +58,38 @@ class LlamaBuilderLinux:
 
     def _preflight_check(self) -> None:
         """Ensure cmake, ninja, and hipcc are available."""
-        required_tools = ["cmake", "git", "hipcc"]
-        optional_tools = ["ninja"]
-
         tier = get_compute_tier(self.gpu_targets)
-        for tool in required_tools:
-            if not shutil.which(tool):
-                if tool == "hipcc":
-                    if tier == 1:
-                        raise RuntimeError(
-                            f"Required tool '{tool}' not found. "
-                            "Tier 1 hardware REQUIRES the ROCm HIP SDK."
-                        )
-                    else:
-                        print_warning(
-                            "hipcc not found. Tier 2 hardware detected — falling back to Vulkan."
-                        )
-                else:
-                    raise RuntimeError(
-                        f"Required tool '{tool}' not found. "
-                        "Install cmake, git, and build tools before proceeding."
-                    )
+        use_hip = bool(shutil.which("hipcc"))
+        planned_ninja_install = False
 
-        self._use_ninja = bool(shutil.which("ninja"))
+        if not use_hip:
+            if tier == 1:
+                raise RuntimeError(
+                    "hipcc not found. Tier 1 hardware REQUIRES the ROCm HIP SDK. "
+                    "Install it and ensure it is on PATH before proceeding."
+                )
+
+            print_warning("hipcc not found. Tier 2 hardware detected — falling back to Vulkan.")
+
+        missing_requirements = _detect_missing_linux_requirements(use_hip=use_hip)
+        if missing_requirements:
+            planned_ninja_install = _install_linux_build_prerequisites(
+                missing_requirements,
+                use_hip=use_hip,
+                dry_run=self.cfg.behavior.dry_run,
+            )
+
+        if self.cfg.behavior.dry_run:
+            self._use_ninja = bool(shutil.which("ninja")) or planned_ninja_install
+        else:
+            remaining_requirements = _detect_missing_linux_requirements(use_hip=use_hip)
+            if remaining_requirements:
+                raise RuntimeError(
+                    "Required Linux build prerequisites are still missing after the automatic "
+                    f"install attempt: {_format_missing_linux_requirements(remaining_requirements)}"
+                )
+            self._use_ninja = bool(shutil.which("ninja"))
+
         if not self._use_ninja:
             print_warning("ninja not found — falling back to make (slower build).")
         else:
@@ -329,3 +349,163 @@ def _symlink_binaries(src_dir: Path, dest_dir: Path, *, privileged: bool = False
                 logger.debug("Symlinked %s → %s", binary, link)
             except OSError as exc:
                 logger.warning("Could not symlink %s: %s", binary, exc)
+
+
+def _detect_distro() -> str:
+    """Return a lowercase distro identifier string."""
+    try:
+        info = platform.freedesktop_os_release()
+        return (info.get("ID", "") + " " + info.get("ID_LIKE", "")).lower().strip()
+    except AttributeError:
+        try:
+            with open("/etc/os-release", encoding="utf-8") as fh:
+                return fh.read().lower()
+        except OSError:
+            return ""
+
+
+def _is_debian_based(distro: str) -> bool:
+    return any(name in distro for name in ("ubuntu", "debian", "mint", "pop"))
+
+
+def _is_arch_based(distro: str) -> bool:
+    return any(name in distro for name in ("arch", "steamos", "manjaro", "endeavouros"))
+
+
+def _is_fedora_based(distro: str) -> bool:
+    return any(name in distro for name in ("fedora", "rhel", "rocky", "alma", "centos"))
+
+
+def _find_first_available_command(candidates: tuple[str, ...]) -> str | None:
+    for candidate in candidates:
+        if shutil.which(candidate):
+            return candidate
+    return None
+
+
+def _has_vulkan_headers() -> bool:
+    return any(path.exists() for path in _VULKAN_HEADER_CANDIDATES)
+
+
+def _has_spirv_headers() -> bool:
+    return any(path.exists() for path in _SPIRV_HEADER_CANDIDATES)
+
+
+def _detect_missing_linux_requirements(*, use_hip: bool) -> list[str]:
+    missing: list[str] = []
+
+    if not shutil.which("cmake"):
+        missing.append("cmake")
+    if not shutil.which("git"):
+        missing.append("git")
+    if not _find_first_available_command(("cc", "gcc", "clang")):
+        missing.append("C compiler")
+    if not _find_first_available_command(("c++", "g++", "clang++")):
+        missing.append("C++ compiler")
+    if not shutil.which("ninja") and not shutil.which("make"):
+        missing.append("build tool")
+
+    if not use_hip:
+        if not shutil.which("glslc"):
+            missing.append("glslc")
+        if not _has_vulkan_headers():
+            missing.append("Vulkan headers")
+        if not _has_spirv_headers():
+            missing.append("SPIRV-Headers")
+
+    return missing
+
+
+def _build_linux_dependency_install_plan(distro: str, *, use_hip: bool) -> tuple[str, list[list[str]], bool] | None:
+    if _is_debian_based(distro) and shutil.which("apt-get"):
+        packages = ["build-essential", "cmake", "git", "ninja-build"]
+        if not use_hip:
+            packages.extend(["libvulkan-dev", "glslc", "spirv-headers"])
+        return (
+            "apt-get",
+            [
+                ["apt-get", "update"],
+                ["apt-get", "install", "-y", "--no-install-recommends", *_dedupe_preserve_order(packages)],
+            ],
+            True,
+        )
+
+    if _is_arch_based(distro) and shutil.which("pacman"):
+        packages = ["base-devel", "cmake", "git", "ninja"]
+        if not use_hip:
+            packages.extend(["shaderc", "spirv-headers", "vulkan-headers"])
+        return (
+            "pacman",
+            [["pacman", "-S", "--needed", "--noconfirm", *_dedupe_preserve_order(packages)]],
+            True,
+        )
+
+    dnf_binary = _find_first_available_command(("dnf5", "dnf", "yum"))
+    if _is_fedora_based(distro) and dnf_binary:
+        packages = ["cmake", "git", "gcc-c++", "make", "ninja-build"]
+        if not use_hip:
+            packages.extend(["vulkan-loader-devel", "shaderc", "spirv-headers-devel"])
+        return (
+            dnf_binary,
+            [[dnf_binary, "install", "-y", *_dedupe_preserve_order(packages)]],
+            True,
+        )
+
+    return None
+
+
+def _install_linux_build_prerequisites(
+    missing_requirements: list[str],
+    *,
+    use_hip: bool,
+    dry_run: bool,
+) -> bool:
+    distro = _detect_distro()
+    plan = _build_linux_dependency_install_plan(distro, use_hip=use_hip)
+    formatted_missing = _format_missing_linux_requirements(missing_requirements)
+
+    if not plan:
+        base_hint = "cmake, git, a C/C++ toolchain, and either ninja or make"
+        vulkan_hint = f"{base_hint}, plus glslc, Vulkan headers, and SPIRV-Headers"
+        raise RuntimeError(
+            "Could not determine how to install missing Linux build prerequisites "
+            f"({formatted_missing}) on distro '{distro or 'unknown'}'. Install "
+            f"{'the Vulkan fallback packages manually' if not use_hip else 'the required build packages manually'} "
+            f"({vulkan_hint if not use_hip else base_hint}) before proceeding."
+        )
+
+    package_manager, commands, installs_ninja = plan
+    print_step(
+        "Missing Linux build prerequisites detected "
+        f"({formatted_missing}). Installing them with {package_manager}..."
+    )
+
+    if dry_run:
+        for command in commands:
+            print_dry_run(f"Would install Linux build prerequisites: {' '.join(command)}")
+        return installs_ninja
+
+    env = os.environ.copy()
+    if package_manager == "apt-get":
+        env["DEBIAN_FRONTEND"] = "noninteractive"
+
+    for command in commands:
+        _run_privileged(command, env=env)
+
+    print_success("Linux build prerequisites installed.")
+    return installs_ninja
+
+
+def _format_missing_linux_requirements(missing_requirements: list[str]) -> str:
+    return ", ".join(missing_requirements)
+
+
+def _dedupe_preserve_order(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for item in items:
+        if item in seen:
+            continue
+        seen.add(item)
+        result.append(item)
+    return result
