@@ -11,6 +11,50 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -L "$0" ]] && command -v readlink &>/dev/null; then
+    REAL_PATH="$(readlink -f "$0" 2>/dev/null || echo "")"
+    if [[ -n "$REAL_PATH" ]]; then
+        SCRIPT_DIR="$(cd "$(dirname "$REAL_PATH")" && pwd)"
+    fi
+fi
+
+# -----------------------------------------------------------
+# Repo structure self-check — don't proceed if broken
+# -----------------------------------------------------------
+if [[ ! -f "$SCRIPT_DIR/pyproject.toml" ]]; then
+    echo "[Gillsystems AI Stack Updater] ERROR: Could not find project root."
+    echo "  Run this script from the Gillsystems-update-ai-engine-software directory."
+    echo "  Current SCRIPT_DIR=$SCRIPT_DIR"
+    exit 1
+fi
+
+# -----------------------------------------------------------
+# Fast help / env-check mode
+# -----------------------------------------------------------
+if [[ "$#" -gt 0 ]]; then
+    case "$1" in
+        --help|-h|--check-env)
+            echo "Gillsystems AI Stack Updater — Linux Launcher"
+            echo ""
+            echo "Usage:  ./update-ai-stack.sh [--dry-run] [--force] [--resume] [--verbose]"
+            echo "        ./update-ai-stack.sh --check-env  (validate environment only)"
+            echo "        ./update-ai-stack.sh --help       (this message)"
+            echo ""
+            if [[ "$1" == "--check-env" ]]; then
+                echo "[Gillsystems AI Stack Updater] Checking environment..."
+                echo "  SCRIPT_DIR=$SCRIPT_DIR"
+                echo "  $(python3 --version 2>&1 || echo 'python3 not found')"
+                echo "  $(python3.12 --version 2>&1 || echo 'python3.12 not found')"
+                echo "  $(python3.11 --version 2>&1 || echo 'python3.11 not found')"
+                if command -v sudo &>/dev/null; then echo "  sudo: available"; else echo "  sudo: MISSING"; fi
+                if [[ -d .venv ]]; then echo "  .venv: exists"; else echo "  .venv: not yet created"; fi
+                echo "  pyproject.toml: $([[ -f pyproject.toml ]] && echo 'found' || echo 'MISSING')"
+                echo "  requirements.txt: $([[ -f requirements.txt ]] && echo 'found' || echo 'MISSING')"
+            fi
+            exit 0
+            ;;
+    esac
+fi
 
 # -----------------------------------------------------------
 # Privilege check — re-execute with sudo if not root
@@ -49,6 +93,14 @@ echo "[Gillsystems AI Stack Updater] Using Python: $($PYTHON_BIN --version)"
 cd "$SCRIPT_DIR"
 
 VENV_DIR="$SCRIPT_DIR/.venv"
+
+# python3-venv check — required for venv creation on Debian/Kubuntu
+if ! "$PYTHON_BIN" -c "import venv" &>/dev/null; then
+    echo "[Gillsystems AI Stack Updater] ERROR: python3-venv is required."
+    echo "  Kubuntu/Debian: sudo apt install python3-venv"
+    echo "  Fedora:         sudo dnf install python3-virtualenv"
+    exit 1
+fi
 
 # PEP 668 guard: Kubuntu 24.04+ / Debian 12+ mark system Python as
 # externally-managed. Auto-create a project venv to avoid the pip block.
