@@ -237,16 +237,13 @@ class VersionIntel:
     def _get_latest_llama(self) -> tuple[Optional[str], Optional[str]]:
         """Query GitHub for the latest llama.cpp release tag.
 
-        Linux  → AMD's ROCm fork (ROCm/llama.cpp) per AMD documentation.
-        Windows → mainstream ggml-org fork (no AMD native Windows ROCm build docs).
+        Both Linux and Windows use the mainstream ggml-org fork; it is ahead of the
+        AMD ROCm tracking fork and required for latest model architectures (e.g. Gemma 4).
         """
         if self._bleeding_edge:
             return "master (bleeding-edge)", None
 
-        if sys.platform == "linux":
-            owner, repo = self.GITHUB_LLAMA_ROCM_OWNER, self.GITHUB_LLAMA_ROCM_REPO
-        else:
-            owner, repo = self.GITHUB_LLAMA_GGML_OWNER, self.GITHUB_LLAMA_GGML_REPO
+        owner, repo = self.GITHUB_LLAMA_GGML_OWNER, self.GITHUB_LLAMA_GGML_REPO
 
         tag = self._github_latest_tag(owner, repo)
         if tag:

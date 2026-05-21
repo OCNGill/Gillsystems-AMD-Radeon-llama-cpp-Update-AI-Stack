@@ -42,6 +42,8 @@ class LlamaBuilderLinux:
         self.source_dir = Path(cfg.paths.llama_cpp_source).expanduser()
         self.install_dir = Path(cfg.paths.llama_cpp_install_linux)
         self.build_dir = self.source_dir / "build-hip"
+        # Computed once at construction; all methods use self.use_hip for consistency.
+        self.use_hip = bool(shutil.which("hipcc"))
 
     def build_and_install(self) -> None:
         """Full clone → cmake configure → build → install cycle."""
@@ -59,7 +61,7 @@ class LlamaBuilderLinux:
     def _preflight_check(self) -> None:
         """Ensure cmake, ninja, and hipcc are available."""
         tier = get_compute_tier(self.gpu_targets)
-        use_hip = bool(shutil.which("hipcc"))
+        use_hip = self.use_hip
         planned_ninja_install = False
 
         if not use_hip:
@@ -129,7 +131,7 @@ class LlamaBuilderLinux:
 
     def _configure_cmake(self) -> None:
         targets_str = ";".join(self.gpu_targets)
-        use_hip = bool(shutil.which("hipcc"))
+        use_hip = self.use_hip
 
         cmake_args = [
             "cmake",
@@ -186,8 +188,7 @@ class LlamaBuilderLinux:
             except Exception as exc:
                 print_warning(f"hipconfig query failed: {exc} — using default env")
 
-        use_hip = bool(shutil.which("hipcc"))
-        if use_hip and get_compute_tier(self.gpu_targets) == 2:
+        if self.use_hip and get_compute_tier(self.gpu_targets) == 2:
             print_info("Tier 2 Mobile/Edge + HIP architecture detected. Injecting LLAMA_HIP_UMA=1.")
             env["LLAMA_HIP_UMA"] = "1"
 
@@ -562,10 +563,14 @@ def _install_linux_build_prerequisites(
     )
 
     steamos = _is_steamos(distro)
+    # Respect global unlock from the launcher (bootstrap-linux.sh sets STEAMOS_UNLOCKED=1
+    # before Python starts). Re-locking mid-run would break the subsequent build/install.
+    launcher_pre_unlocked = os.environ.get("STEAMOS_UNLOCKED") == "1"
 
     if dry_run:
-        if steamos:
+        if steamos and not launcher_pre_unlocked:
             print_dry_run("Would unlock SteamOS read-only filesystem: steamos-readonly disable")
+        if steamos:
             print_dry_run(
                 "Would verify SteamOS pacman paths are writable: "
                 f"{_PACMAN_DATABASE_DIR}, {_PACMAN_CACHE_DIR}, {_PACMAN_KEYRING_DIR}"
@@ -576,7 +581,7 @@ def _install_linux_build_prerequisites(
                 print_dry_run(f"Would populate pacman keyring: pacman-key --populate {keyring}")
         for command in commands:
             print_dry_run(f"Would install Linux build prerequisites: {' '.join(command)}")
-        if steamos:
+        if steamos and not launcher_pre_unlocked:
             print_dry_run("Would re-lock SteamOS filesystem: steamos-readonly enable")
         return installs_ninja
 
@@ -584,9 +589,15 @@ def _install_linux_build_prerequisites(
     if package_manager == "apt-get":
         env["DEBIAN_FRONTEND"] = "noninteractive"
 
-    if steamos:
+    if steamos and not launcher_pre_unlocked:
         print_step("SteamOS detected — temporarily disabling read-only filesystem...")
-        _run_privileged(["steamos-readonly", "disable"])
+        try:
+            _run_privileged(["steamos-readonly", "disable"])
+        except RuntimeError as exc:
+            raise RuntimeError(
+                "Failed to disable SteamOS read-only filesystem. "
+                "Manual unlock: sudo steamos-readonly disable"
+            ) from exc
 
     try:
         if steamos:
@@ -594,7 +605,7 @@ def _install_linux_build_prerequisites(
         for command in commands:
             _run_privileged(command, env=env)
     finally:
-        if steamos:
+        if steamos and not launcher_pre_unlocked:
             try:
                 _run_privileged(["steamos-readonly", "enable"])
                 print_info("SteamOS filesystem re-locked (read-only restored).")

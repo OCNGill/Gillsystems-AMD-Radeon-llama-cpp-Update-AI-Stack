@@ -340,12 +340,25 @@ cleanup() {
         wait "$SUDO_KEEPALIVE_PID" 2>/dev/null || true
     fi
 
-    if [[ "${STEAMOS_UNLOCKED:-0}" -eq 1 ]]; then
-        echo "[Gillsystems AI Stack Updater] Re-locking SteamOS filesystem..."
-        sudo -n steamos-readonly enable >/dev/null 2>&1 || true
+    # Restore file ownership BEFORE re-locking the filesystem.
+    # Privileged build steps may leave root-owned artifacts in the repo directory;
+    # chowning them back here prevents permission errors on subsequent runs.
+    if [[ $EUID -eq 0 ]]; then
+        restore_user_owned_paths || true
+    elif [[ -n "${REPO_OWNER:-}" && "${REPO_OWNER}" != "root" ]]; then
+        local owner_group
+        owner_group="$(id -gn "$REPO_OWNER" 2>/dev/null || id -gn)"
+        sudo -n chown -R "$REPO_OWNER:$owner_group" "$SCRIPT_DIR" >/dev/null 2>&1 || true
     fi
 
-    restore_user_owned_paths || true
+    # Re-lock LAST — after all writes are done.
+    if [[ "${STEAMOS_UNLOCKED:-0}" -eq 1 ]]; then
+        echo "[Gillsystems AI Stack Updater] Re-locking SteamOS filesystem..."
+        if ! sudo -n steamos-readonly enable >/dev/null 2>&1; then
+            echo "[Gillsystems AI Stack Updater] WARNING: Failed to re-lock SteamOS. Run manually: sudo steamos-readonly enable"
+        fi
+    fi
+
     exit "$exit_code"
 }
 
