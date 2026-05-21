@@ -17,6 +17,27 @@ def _make_cfg(tmp_path: Path) -> GillsystemsAIStackUpdaterConfig:
     return cfg
 
 
+def _assert_commands_appear_in_order(commands: list[list[str]], expected_sequence: list[list[str]]) -> None:
+    position = 0
+    for expected in expected_sequence:
+        while position < len(commands) and commands[position] != expected:
+            position += 1
+        if position == len(commands):
+            raise AssertionError(f"Expected command not found in order: {expected}\nCommands: {commands}")
+        position += 1
+
+
+def _has_command_with_path(commands: list[list[str]], prefix: list[str], expected_path: str) -> bool:
+    normalized_expected = expected_path.replace("\\", "/")
+    prefix_len = len(prefix)
+    return any(
+        len(cmd) > prefix_len
+        and cmd[:prefix_len] == prefix
+        and cmd[prefix_len].replace("\\", "/") == normalized_expected
+        for cmd in commands
+    )
+
+
 def test_install_uses_privileged_commands_for_protected_paths(tmp_path: Path) -> None:
     cfg = _make_cfg(tmp_path)
     builder = LlamaBuilderLinux(cfg, ["gfx1102"])
@@ -106,13 +127,19 @@ def test_preflight_installs_steamos_vulkan_prereqs_when_missing(tmp_path: Path) 
          patch("src.linux.llama_builder._has_vulkan_headers", side_effect=lambda: state["installed"]), \
          patch("src.linux.llama_builder._has_spirv_headers", side_effect=lambda: state["installed"]), \
          patch("src.linux.llama_builder._PACMAN_KEYRING_DIR", new=Path("/nonexistent/__gpg__")), \
+         patch("src.linux.llama_builder._detect_available_pacman_keyrings", return_value=["archlinux", "holo"]), \
          patch("src.linux.llama_builder._run_privileged", side_effect=fake_run_privileged):
         builder._preflight_check()
 
-    assert install_commands == [
-        ["steamos-readonly", "disable"],
+    assert install_commands[0] == ["steamos-readonly", "disable"]
+    assert install_commands[-1] == ["steamos-readonly", "enable"]
+    assert _has_command_with_path(install_commands, ["mkdir", "-p"], "/var/lib/pacman")
+    assert _has_command_with_path(install_commands, ["mkdir", "-p"], "/var/cache/pacman/pkg")
+    assert _has_command_with_path(install_commands, ["mkdir", "-p"], "/nonexistent/__gpg__")
+    _assert_commands_appear_in_order(install_commands, [
         ["pacman-key", "--init"],
         ["pacman-key", "--populate", "archlinux"],
+        ["pacman-key", "--populate", "holo"],
         [
             "pacman",
             "-S",
@@ -126,8 +153,7 @@ def test_preflight_installs_steamos_vulkan_prereqs_when_missing(tmp_path: Path) 
             "spirv-headers",
             "vulkan-headers",
         ],
-        ["steamos-readonly", "enable"],
-    ]
+    ])
     assert builder._use_ninja is True
 
 
@@ -146,6 +172,8 @@ def test_preflight_dry_run_reports_steamos_install_plan(tmp_path: Path) -> None:
 
     with patch("src.linux.llama_builder.shutil.which", side_effect=fake_which), \
          patch("src.linux.llama_builder._detect_distro", return_value="steamos arch"), \
+            patch("src.linux.llama_builder._PACMAN_KEYRING_DIR", new=Path("/nonexistent/__gpg__")), \
+            patch("src.linux.llama_builder._detect_available_pacman_keyrings", return_value=["archlinux", "holo"]), \
          patch("src.linux.llama_builder._has_vulkan_headers", return_value=False), \
          patch("src.linux.llama_builder._has_spirv_headers", return_value=False), \
          patch("src.linux.llama_builder.print_dry_run", side_effect=dry_run_messages.append):
@@ -158,6 +186,10 @@ def test_preflight_dry_run_reports_steamos_install_plan(tmp_path: Path) -> None:
     )
     assert any("steamos-readonly disable" in message for message in dry_run_messages)
     assert any("steamos-readonly enable" in message for message in dry_run_messages)
+    assert any("verify SteamOS pacman paths are writable" in message for message in dry_run_messages)
+    assert any("pacman-key --init" in message for message in dry_run_messages)
+    assert any("pacman-key --populate archlinux" in message for message in dry_run_messages)
+    assert any("pacman-key --populate holo" in message for message in dry_run_messages)
 
 
 def test_steamos_readonly_lock_restored_after_pacman_failure(tmp_path: Path) -> None:
@@ -184,6 +216,7 @@ def test_steamos_readonly_lock_restored_after_pacman_failure(tmp_path: Path) -> 
          patch("src.linux.llama_builder._has_vulkan_headers", return_value=False), \
          patch("src.linux.llama_builder._has_spirv_headers", return_value=False), \
          patch("src.linux.llama_builder._PACMAN_KEYRING_DIR", new=Path("/nonexistent/__gpg__")), \
+            patch("src.linux.llama_builder._detect_available_pacman_keyrings", return_value=["archlinux"]), \
          patch("src.linux.llama_builder._run_privileged", side_effect=fake_run_privileged):
         with pytest.raises(RuntimeError, match="pacman failed"):
             builder._preflight_check()
@@ -193,8 +226,8 @@ def test_steamos_readonly_lock_restored_after_pacman_failure(tmp_path: Path) -> 
     assert ["steamos-readonly", "enable"] in privileged_calls
 
 
-def test_steamos_skips_keyring_init_when_already_present(tmp_path: Path) -> None:
-    """pacman-key --init must NOT be called when the keyring already exists."""
+def test_steamos_populates_available_keyrings_when_already_present(tmp_path: Path) -> None:
+    """SteamOS should repopulate available vendor keyrings even when initialized."""
     cfg = _make_cfg(tmp_path)
     builder = LlamaBuilderLinux(cfg, ["gfx1033"])
 
@@ -224,11 +257,13 @@ def test_steamos_skips_keyring_init_when_already_present(tmp_path: Path) -> None
          patch("src.linux.llama_builder._has_vulkan_headers", side_effect=lambda: state["installed"]), \
          patch("src.linux.llama_builder._has_spirv_headers", side_effect=lambda: state["installed"]), \
          patch("src.linux.llama_builder._PACMAN_KEYRING_DIR", new=fake_gnupg), \
+         patch("src.linux.llama_builder._detect_available_pacman_keyrings", return_value=["archlinux", "holo"]), \
          patch("src.linux.llama_builder._run_privileged", side_effect=fake_run_privileged):
         builder._preflight_check()
 
     assert ["pacman-key", "--init"] not in privileged_calls
-    assert ["pacman-key", "--populate", "archlinux"] not in privileged_calls
+    assert ["pacman-key", "--populate", "archlinux"] in privileged_calls
+    assert ["pacman-key", "--populate", "holo"] in privileged_calls
     assert ["steamos-readonly", "disable"] in privileged_calls
     assert ["steamos-readonly", "enable"] in privileged_calls
 

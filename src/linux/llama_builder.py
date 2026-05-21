@@ -459,27 +459,73 @@ def _build_linux_dependency_install_plan(distro: str, *, use_hip: bool) -> tuple
 
 
 _PACMAN_KEYRING_DIR = Path("/etc/pacman.d/gnupg")
+_PACMAN_DATABASE_DIR = Path("/var/lib/pacman")
+_PACMAN_CACHE_DIR = Path("/var/cache/pacman/pkg")
+_PACMAN_KEYRING_SEARCH_DIR = Path("/usr/share/pacman/keyrings")
+_STEAMOS_KEYRING_CANDIDATES = ("archlinux", "holo", "jupiter", "steamos")
 
 
-def _ensure_steamos_pacman_keyring() -> None:
-    """Initialise the pacman keyring on SteamOS if it has never been set up.
-
-    SteamOS ships without a populated /etc/pacman.d/gnupg, which causes
-    pacman to fail with 'keyring is not writable' / 'required key missing'.
-    This must run *after* steamos-readonly disable and *before* pacman -S.
-    """
-    keyring_ok = (
+def _has_initialized_pacman_keyring() -> bool:
+    return (
         _PACMAN_KEYRING_DIR.exists()
         and (_PACMAN_KEYRING_DIR / "pubring.gpg").exists()
         and (_PACMAN_KEYRING_DIR / "trustdb.gpg").exists()
     )
-    if keyring_ok:
-        return
 
-    print_step("Initialising pacman keyring (first-time SteamOS setup)...")
-    _run_privileged(["pacman-key", "--init"])
-    _run_privileged(["pacman-key", "--populate", "archlinux"])
-    print_info("pacman keyring initialised.")
+
+def _detect_available_pacman_keyrings() -> list[str]:
+    keyrings: list[str] = []
+    for name in _STEAMOS_KEYRING_CANDIDATES:
+        if (_PACMAN_KEYRING_SEARCH_DIR / f"{name}.gpg").exists():
+            keyrings.append(name)
+    return keyrings or ["archlinux"]
+
+
+def _verify_privileged_directory_is_writable(path: Path, description: str) -> None:
+    probe = path / f".gillsystems-write-test-{os.getpid()}"
+    try:
+        _run_privileged(["mkdir", "-p", str(path)])
+        _run_privileged(["touch", str(probe)])
+        _run_privileged(["rm", "-f", str(probe)])
+    except RuntimeError as exc:
+        raise RuntimeError(
+            f"SteamOS {description} is not writable after unlocking the filesystem: {path}"
+        ) from exc
+
+
+def _ensure_steamos_pacman_keyring() -> None:
+    """Prepare SteamOS pacman state for package installation.
+
+    SteamOS can fail package installs even after `steamos-readonly disable`
+    if the pacman database/keyring tree is missing, partially initialized, or
+    not writable. The Commander project hardens this by verifying write access
+    explicitly before use; this updater follows the same pattern.
+    """
+    keyrings_to_populate = _detect_available_pacman_keyrings()
+
+    try:
+        print_step("Verifying SteamOS pacman filesystem state...")
+        _verify_privileged_directory_is_writable(_PACMAN_DATABASE_DIR, "pacman database")
+        _verify_privileged_directory_is_writable(_PACMAN_CACHE_DIR, "pacman cache")
+        _verify_privileged_directory_is_writable(_PACMAN_KEYRING_DIR, "pacman keyring")
+        _run_privileged(["chmod", "700", str(_PACMAN_KEYRING_DIR)])
+
+        if not _has_initialized_pacman_keyring():
+            print_step("Initialising pacman keyring (SteamOS first-run recovery)...")
+            _run_privileged(["pacman-key", "--init"])
+
+        for keyring in keyrings_to_populate:
+            _run_privileged(["pacman-key", "--populate", keyring])
+    except RuntimeError as exc:
+        keyring_args = " ".join(keyrings_to_populate)
+        raise RuntimeError(
+            "SteamOS pacman recovery failed while preparing writable package-manager state. "
+            f"Manual remediation: sudo steamos-readonly disable; sudo rm -rf {_PACMAN_KEYRING_DIR}; "
+            f"sudo pacman-key --init; sudo pacman-key --populate {keyring_args}; "
+            "sudo steamos-readonly enable"
+        ) from exc
+
+    print_info("SteamOS pacman state verified.")
 
 
 def _install_linux_build_prerequisites(
@@ -513,8 +559,14 @@ def _install_linux_build_prerequisites(
     if dry_run:
         if steamos:
             print_dry_run("Would unlock SteamOS read-only filesystem: steamos-readonly disable")
-            if not (_PACMAN_KEYRING_DIR.exists() and (_PACMAN_KEYRING_DIR / "pubring.gpg").exists()):
-                print_dry_run("Would initialise pacman keyring: pacman-key --init && pacman-key --populate archlinux")
+            print_dry_run(
+                "Would verify SteamOS pacman paths are writable: "
+                f"{_PACMAN_DATABASE_DIR}, {_PACMAN_CACHE_DIR}, {_PACMAN_KEYRING_DIR}"
+            )
+            if not _has_initialized_pacman_keyring():
+                print_dry_run("Would initialise pacman keyring: pacman-key --init")
+            for keyring in _detect_available_pacman_keyrings():
+                print_dry_run(f"Would populate pacman keyring: pacman-key --populate {keyring}")
         for command in commands:
             print_dry_run(f"Would install Linux build prerequisites: {' '.join(command)}")
         if steamos:
