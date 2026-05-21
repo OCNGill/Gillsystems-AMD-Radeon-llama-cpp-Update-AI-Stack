@@ -157,4 +157,13 @@ deck-node  192.0.2.139   (SteamOS — Worker)
 
 ---
 
+## Tier 2 Server Launcher References
+
+- **Shared templates:** `Gillsystems_example_server_edit_per_node.bat` and `Gillsystems_example_server_edit_per_node.sh` remain the generic per-node server launchers in the repo root.
+- **mobile-node:** `executables/server_mobile_uma_windows_example.bat` is the dedicated Tier 2 server-only example for the Vega 6 node at `192.0.2.93`.
+- **deck-node:** `executables/server_deck_vulkan_linux_example.sh` is the dedicated Tier 2 server-only example for the Steam Deck node at `192.0.2.139`.
+- **Executable layout:** updater installs remain canonical at `C:\Gillsystems\llama.cpp\bin` on Windows and `/opt/gillsystems/llama.cpp/bin` on Linux, while successful runs also mirror those binaries into `<llama_cpp_source>/bin` for source-tree launch workflows.
+
+---
+
 *This document is the authoritative local infrastructure reference for all Gillsystems projects. Keep in sync when node IPs or hardware changes.*

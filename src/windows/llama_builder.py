@@ -183,8 +183,29 @@ class LlamaBuilderWindows:
                 cmake_args.append(f"-Drocblas_DIR={hip_path}/lib/cmake/rocblas")
                 cmake_args.append(f"-DAMDDeviceLibs_DIR={hip_path}/lib/cmake/AMDDeviceLibs")
         else:
-            cmake_args.append("-DGGML_VULKAN=ON")
-            print_info("Enabling Vulkan backend (HIP fallback for mobile/edge targets).")
+            vulkan_sdk_path = _find_vulkan_sdk_path()
+            vulkan_cmake_prefix = _find_vulkan_cmake_prefix(vulkan_sdk_path)
+            if not vulkan_cmake_prefix:
+                if vulkan_sdk_path:
+                    raise RuntimeError(
+                        "Tier 2 Vulkan fallback detected a Vulkan SDK at "
+                        f"{vulkan_sdk_path}, but SPIRV-HeadersConfig.cmake was not found "
+                        "under its CMake package directories. Repair or reinstall the "
+                        "LunarG Vulkan SDK before proceeding."
+                    )
+                raise RuntimeError(
+                    "Tier 2 Vulkan fallback requires the LunarG Vulkan SDK. Install it "
+                    "or set VULKAN_SDK to the SDK root before proceeding."
+                )
+
+            cmake_args += [
+                "-DGGML_VULKAN=ON",
+                f"-DCMAKE_PREFIX_PATH={_merge_cmake_prefix_path(os.environ.get('CMAKE_PREFIX_PATH'), vulkan_cmake_prefix)}",
+            ]
+            print_info(
+                "Enabling Vulkan backend (HIP fallback for mobile/edge targets). "
+                f"Using SDK CMake prefix: {vulkan_cmake_prefix}"
+            )
 
         if self._use_ninja:
             cmake_args += ["-GNinja"]
@@ -295,6 +316,10 @@ class LlamaBuilderWindows:
         bin_dir = str(self.install_dir / "bin")
         _append_to_user_path(bin_dir)
         print_info(f"Added {bin_dir} to user PATH.")
+
+        mirrored_bin_dir = _mirror_install_bin_tree(self.install_dir / "bin", self.source_dir / "bin")
+        if mirrored_bin_dir:
+            print_info(f"Mirrored installed binaries into {mirrored_bin_dir}.")
 
     # ------------------------------------------------------------------
     # Validate
@@ -425,6 +450,76 @@ def _find_hip_path() -> Optional[str]:
     return None
 
 
+def _find_vulkan_sdk_path() -> Optional[str]:
+    """Try to locate the installed Vulkan SDK root directory on Windows."""
+    for env_var in ("VULKAN_SDK", "VK_SDK_PATH"):
+        candidate = os.environ.get(env_var)
+        if candidate and Path(candidate).exists():
+            return candidate
+
+    for sdk_root in (Path(r"C:\VulkanSDK"), Path(r"C:\Program Files\VulkanSDK")):
+        if not sdk_root.exists():
+            continue
+
+        version_dirs = [child for child in sdk_root.iterdir() if child.is_dir()]
+        for version_dir in sorted(version_dirs, key=_version_sort_key, reverse=True):
+            return str(version_dir)
+
+    return None
+
+
+def _find_vulkan_cmake_prefix(vulkan_sdk_path: Optional[str]) -> Optional[str]:
+    """Return the Vulkan SDK CMake prefix that exposes SPIRV-Headers."""
+    if not vulkan_sdk_path:
+        return None
+
+    sdk_root = Path(vulkan_sdk_path)
+    candidates = [
+        sdk_root,
+        sdk_root / "Lib" / "cmake",
+        sdk_root / "lib" / "cmake",
+        sdk_root / "cmake",
+    ]
+    for candidate in candidates:
+        if (candidate / "SPIRV-Headers" / "SPIRV-HeadersConfig.cmake").exists():
+            return str(candidate)
+        if (candidate / "SPIRV-HeadersConfig.cmake").exists():
+            return str(candidate)
+
+    return None
+
+
+def _merge_cmake_prefix_path(*prefix_groups: Optional[str]) -> str:
+    """Combine CMake prefix path fragments while preserving their order."""
+    prefixes: list[str] = []
+    seen: set[str] = set()
+
+    for prefix_group in prefix_groups:
+        if not prefix_group:
+            continue
+        for prefix in str(prefix_group).split(";"):
+            normalized = prefix.strip()
+            if not normalized:
+                continue
+            lowered = normalized.lower()
+            if lowered in seen:
+                continue
+            seen.add(lowered)
+            prefixes.append(normalized)
+
+    return ";".join(prefixes)
+
+
+def _version_sort_key(path: Path) -> tuple[int, ...]:
+    """Sort Vulkan SDK version directories newest-first."""
+    version_parts: list[int] = []
+    for token in path.name.replace("-", ".").split("."):
+        digits = "".join(ch for ch in token if ch.isdigit())
+        if digits:
+            version_parts.append(int(digits))
+    return tuple(version_parts or [0])
+
+
 def _hip_has_rocwmma(hip_path: Optional[str]) -> bool:
     """Return True when the installed HIP SDK exposes the rocWMMA header set."""
     if not hip_path:
@@ -505,6 +600,23 @@ def _resolve_rocblas_tensile_libpath(install_bin: Path, hip_path: Optional[str])
     return None
 
 
+def _mirror_install_bin_tree(install_bin: Path, source_bin: Path) -> Optional[Path]:
+    """Copy the canonical install bin tree into the source-root bin directory."""
+    if not install_bin.exists():
+        return None
+
+    if install_bin.resolve(strict=False) == source_bin.resolve(strict=False):
+        return None
+
+    if source_bin.is_symlink() or source_bin.is_file():
+        source_bin.unlink()
+    elif source_bin.exists():
+        shutil.rmtree(source_bin)
+
+    shutil.copytree(install_bin, source_bin)
+    return source_bin
+
+
 def _prepend_to_path_env(base_env: dict, extra_dirs: list[str]) -> dict:
     """Return an env copy with extra directories prepended to PATH once each."""
     env = base_env.copy()
@@ -564,7 +676,12 @@ def _run(cmd: list[str], timeout: int = 3600, env: Optional[dict] = None) -> Non
 
 
 def _append_to_user_path(new_dir: str) -> None:
-    """Add a directory to the current user's PATH in the registry."""
+    """Add a directory to the current process PATH and the current user's PATH."""
+    current_process_paths = [path.strip() for path in os.environ.get("PATH", "").split(";") if path.strip()]
+    if new_dir.lower() not in {path.lower() for path in current_process_paths}:
+        current_process_env = _prepend_to_path_env(dict(os.environ), [new_dir])
+        os.environ["PATH"] = current_process_env.get("PATH", os.environ.get("PATH", ""))
+
     try:
         import winreg
         key = winreg.OpenKey(
@@ -578,7 +695,8 @@ def _append_to_user_path(new_dir: str) -> None:
         except FileNotFoundError:
             current_path = ""
         paths = [p.strip() for p in current_path.split(";") if p.strip()]
-        if new_dir not in paths:
+        existing_paths = {path.lower() for path in paths}
+        if new_dir.lower() not in existing_paths:
             paths.append(new_dir)
             winreg.SetValueEx(key, "Path", 0, winreg.REG_EXPAND_SZ, ";".join(paths))
         winreg.CloseKey(key)

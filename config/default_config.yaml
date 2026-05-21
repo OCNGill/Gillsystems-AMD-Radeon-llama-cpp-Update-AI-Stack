@@ -27,9 +27,9 @@ gpu:
 # Install & workspace paths
 # ------------------------------------------------------------
 paths:
-  llama_cpp_install_linux:   "/opt/gillsystems/llama.cpp"
-  llama_cpp_install_windows: "C:\\Gillsystems\\llama.cpp"
-  llama_cpp_source:          "~/src/llama.cpp"
+  llama_cpp_install_linux:   "/opt/gillsystems/llama.cpp"   # canonical install root; binaries are also mirrored to <llama_cpp_source>/bin
+  llama_cpp_install_windows: "C:\\Gillsystems\\llama.cpp" # canonical install root; binaries are also mirrored to <llama_cpp_source>/bin
+  llama_cpp_source:          "~/src/llama.cpp"              # source checkout used for git/cmake; launchers can target the mirrored <source>/bin path
   state_dir:                 "state"
   log_dir:                   "logs"
 

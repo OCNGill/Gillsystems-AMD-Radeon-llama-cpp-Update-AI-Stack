@@ -305,6 +305,16 @@ class Orchestrator:
             else:
                 print_step(f"  {name}: not available (optional)")
 
+        install_bin = (
+            Path(self.cfg.paths.llama_cpp_install_windows) / "bin"
+            if sys.platform == "win32"
+            else Path(self.cfg.paths.llama_cpp_install_linux) / "bin"
+        )
+        source_bin = Path(self.cfg.paths.llama_cpp_source).expanduser() / "bin"
+        print_info(f"llama.cpp binaries are installed at {install_bin}")
+        if source_bin.exists() and source_bin.resolve(strict=False) != install_bin.resolve(strict=False):
+            print_info(f"Source-root launcher bin is available at {source_bin}")
+
         if validation_passed:
             self.state.mark_done(step_id, output="all checks passed")
         else:

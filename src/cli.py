@@ -284,4 +284,6 @@ def print_summary(
     if dry_run:
         print_dry_run("No changes were made. Remove --dry-run to execute.")
     else:
-        print_success("All updates complete! Run `rocminfo` and `llama-cli --version` to verify.")
+        print_success(
+            "All updates complete! Open a new terminal before running `rocminfo` or `llama-cli --version`, or run the installed binaries directly."
+        )
