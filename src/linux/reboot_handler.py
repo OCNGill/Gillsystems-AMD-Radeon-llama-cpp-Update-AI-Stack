@@ -6,13 +6,20 @@ Once the resume completes, the service is removed.
 """
 from __future__ import annotations
 
+import getpass
 import logging
 import os
 import subprocess
 from pathlib import Path
 
+try:
+    import pwd
+except ModuleNotFoundError:  # pragma: no cover - Windows test host only
+    pwd = None
+
 from src.cli import print_dry_run, print_info, print_step, print_success, print_warning
 from src.config import GillsystemsAIStackUpdaterConfig
+from src.privilege import get_linux_sudo_prefix
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +34,10 @@ ConditionPathExists={launcher}
 
 [Service]
 Type=oneshot
+WorkingDirectory={working_dir}
+Environment="HOME={owner_home}"
+Environment="GILLSYSTEMS_REPO_OWNER={owner}"
+Environment="GILLSYSTEMS_REPO_OWNER_HOME={owner_home}"
 ExecStart=/bin/bash {launcher} --resume
 ExecStartPost=/bin/systemctl disable {service_name}
 RemainAfterExit=yes
@@ -44,6 +55,7 @@ class RebootHandler:
     def __init__(self, cfg: GillsystemsAIStackUpdaterConfig) -> None:
         self.cfg = cfg
         self.launcher_path = self._find_launcher()
+        self.repo_owner, self.repo_owner_home = self._resolve_owner_context()
 
     def _find_launcher(self) -> Path:
         """Locate update-ai-stack.sh relative to this module."""
@@ -56,6 +68,23 @@ class RebootHandler:
         # Fallback — return expected path
         return here.parent.parent / "update-ai-stack.sh"
 
+    def _resolve_owner_context(self) -> tuple[str, str]:
+        owner = (
+            os.environ.get("GILLSYSTEMS_REPO_OWNER")
+            or os.environ.get("SUDO_USER")
+            or os.environ.get("USER")
+            or getpass.getuser()
+        )
+        owner_home = os.environ.get("GILLSYSTEMS_REPO_OWNER_HOME", "")
+        if not owner_home and pwd is not None:
+            try:
+                owner_home = pwd.getpwnam(owner).pw_dir
+            except KeyError:
+                pass
+        if not owner_home:
+            owner_home = str(Path.home())
+        return owner, owner_home
+
     def register_resume_task(self) -> None:
         """Create the systemd one-shot service and enable it."""
         if self.cfg.behavior.dry_run:
@@ -65,6 +94,9 @@ class RebootHandler:
 
         service_content = _SERVICE_TEMPLATE.format(
             launcher=self.launcher_path,
+            working_dir=self.launcher_path.parent,
+            owner=self.repo_owner,
+            owner_home=self.repo_owner_home,
             service_name=_SERVICE_NAME,
         )
 
@@ -114,8 +146,7 @@ def _run_privileged(
     cmd: list[str],
     check: bool = True,
 ) -> subprocess.CompletedProcess:
-    if hasattr(os, "geteuid") and os.geteuid() != 0:
-        cmd = ["sudo"] + cmd
+    cmd = get_linux_sudo_prefix() + cmd
     logger.debug("Running: %s", " ".join(cmd))
     return subprocess.run(cmd, check=check, timeout=30)
 
@@ -123,7 +154,7 @@ def _run_privileged(
 def _write_via_sudo_tee(path: str, content: str) -> None:
     """Write content to a privileged path using sudo tee."""
     result = subprocess.run(
-        ["sudo", "tee", path],
+        get_linux_sudo_prefix() + ["tee", path],
         input=content,
         text=True,
         capture_output=True,

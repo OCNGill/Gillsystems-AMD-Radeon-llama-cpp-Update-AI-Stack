@@ -19,6 +19,7 @@ from typing import Optional
 
 from src.cli import print_dry_run, print_error, print_info, print_step, print_success, print_warning
 from src.config import GillsystemsAIStackUpdaterConfig
+from src.privilege import get_linux_sudo_prefix
 
 logger = logging.getLogger(__name__)
 
@@ -183,7 +184,8 @@ class ROCmUpdater:
 
     def _add_user_to_gpu_groups(self) -> None:
         """Add the invoking non-root user to render and video groups."""
-        # SUDO_USER is set when running under sudo — it's the original username
+        # SUDO_USER is set during root-owned resume runs; otherwise USER is already
+        # the interactive account that owns the repo and source tree.
         username = os.environ.get("SUDO_USER") or os.environ.get("USER")
         if not username or username == "root":
             print_step("Running as root user — skipping group addition.")
@@ -284,8 +286,7 @@ def _run_privileged(
     Run a shell command.  If not root, prepend sudo.
     Raises CalledProcessError on failure.
     """
-    if hasattr(os, "geteuid") and os.geteuid() != 0:
-        cmd = ["sudo"] + cmd
+    cmd = get_linux_sudo_prefix() + cmd
 
     logger.debug("Running: %s", " ".join(cmd))
     result = subprocess.run(
