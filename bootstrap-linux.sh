@@ -57,6 +57,32 @@ lookup_home_dir() {
     fi
 }
 
+resolve_node_name() {
+    local candidate=""
+
+    if [[ -n "${GILLSYSTEMS_NODE_NAME:-}" ]]; then
+        candidate="$GILLSYSTEMS_NODE_NAME"
+    elif [[ -n "${HOSTNAME:-}" ]]; then
+        candidate="$HOSTNAME"
+    elif command -v hostname >/dev/null 2>&1; then
+        candidate="$(hostname 2>/dev/null || true)"
+    elif [[ -x /usr/bin/hostname ]]; then
+        candidate="$(/usr/bin/hostname 2>/dev/null || true)"
+    elif [[ -r /etc/hostname ]]; then
+        candidate="$(tr -d '[:space:]' < /etc/hostname)"
+    elif command -v uname >/dev/null 2>&1; then
+        candidate="$(uname -n 2>/dev/null || true)"
+    elif [[ -x /usr/bin/uname ]]; then
+        candidate="$(/usr/bin/uname -n 2>/dev/null || true)"
+    fi
+
+    if [[ -z "$candidate" ]]; then
+        candidate="unknown-node"
+    fi
+
+    printf '%s\n' "$candidate"
+}
+
 SCRIPT_PATH="$(resolve_script_path "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 LAUNCHER_PATH="$SCRIPT_DIR/update-ai-stack.sh"
@@ -373,7 +399,7 @@ fi
 
 mkdir -p "$LOG_DIR"
 
-NODE_NAME="$(hostname)"
+NODE_NAME="$(resolve_node_name)"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 LOG_FILE="$LOG_DIR/run_${NODE_NAME}_${TIMESTAMP}.log"
 
