@@ -27,6 +27,13 @@ _VULKAN_HEADER_CANDIDATES = (
     Path("/usr/local/include/vulkan/vulkan.h"),
 )
 
+_VULKAN_LOADER_LIBRARY_CANDIDATES = (
+    Path("/usr/lib/libvulkan.so"),
+    Path("/usr/lib64/libvulkan.so"),
+    Path("/usr/local/lib/libvulkan.so"),
+    Path("/usr/local/lib64/libvulkan.so"),
+)
+
 _SPIRV_HEADER_CANDIDATES = (
     Path("/usr/include/spirv/unified1/spirv.hpp"),
     Path("/usr/local/include/spirv/unified1/spirv.hpp"),
@@ -401,6 +408,26 @@ def _find_first_available_command(candidates: tuple[str, ...]) -> str | None:
     return None
 
 
+def _has_vulkan_loader() -> bool:
+    """Return True if the Vulkan loader/runtime is available to CMake."""
+    for tool in ("pkgconf", "pkg-config"):
+        if shutil.which(tool):
+            try:
+                if subprocess.run([tool, "--exists", "vulkan"],
+                                  capture_output=True, timeout=5).returncode == 0:
+                    return True
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+    if shutil.which("pacman"):
+        try:
+            if subprocess.run(["pacman", "-Qq", "vulkan-icd-loader"],
+                              capture_output=True, timeout=5).returncode == 0:
+                return True
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    return any(path.exists() for path in _VULKAN_LOADER_LIBRARY_CANDIDATES)
+
+
 def _has_vulkan_headers() -> bool:
     """Return True if Vulkan development headers are available.
 
@@ -468,6 +495,8 @@ def _detect_missing_linux_requirements(*, use_hip: bool) -> list[str]:
         missing.append("build tool")
 
     if not use_hip:
+        if not _has_vulkan_loader():
+            missing.append("Vulkan loader")
         if not shutil.which("glslc"):
             missing.append("glslc")
         if not _has_vulkan_headers():
@@ -495,7 +524,7 @@ def _build_linux_dependency_install_plan(distro: str, *, use_hip: bool) -> tuple
     if _is_arch_based(distro) and shutil.which("pacman"):
         packages = ["base-devel", "cmake", "git", "ninja"]
         if not use_hip:
-            packages.extend(["shaderc", "spirv-headers", "vulkan-headers"])
+            packages.extend(["shaderc", "spirv-headers", "vulkan-headers", "vulkan-icd-loader"])
         return (
             "pacman",
             [["pacman", "-S", "--needed", "--noconfirm", *_dedupe_preserve_order(packages)]],
