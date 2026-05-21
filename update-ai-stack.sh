@@ -48,11 +48,25 @@ echo "[Gillsystems AI Stack Updater] Using Python: $($PYTHON_BIN --version)"
 # -----------------------------------------------------------
 cd "$SCRIPT_DIR"
 
-DEPS_MARKER=".deps_installed"
-if [[ ! -f "$DEPS_MARKER" ]] || [[ "requirements.txt" -nt "$DEPS_MARKER" ]]; then
+VENV_DIR="$SCRIPT_DIR/.venv"
+
+# PEP 668 guard: Kubuntu 24.04+ / Debian 12+ mark system Python as
+# externally-managed. Auto-create a project venv to avoid the pip block.
+VENV_FRESH=false
+if [[ ! -d "$VENV_DIR" ]]; then
+    echo "[Gillsystems AI Stack Updater] Creating virtual environment..."
+    "$PYTHON_BIN" -m venv "$VENV_DIR"
+    VENV_FRESH=true
+fi
+
+# Activate venv
+PYTHON_BIN="$VENV_DIR/bin/python"
+PIP_BIN="$VENV_DIR/bin/pip"
+
+if $VENV_FRESH || [[ "requirements.txt" -nt "$VENV_DIR/.deps_installed" ]]; then
     echo "[Gillsystems AI Stack Updater] Installing Python dependencies..."
-    "$PYTHON_BIN" -m pip install --quiet -r requirements.txt
-    touch "$DEPS_MARKER"
+    "$PIP_BIN" install --quiet -r requirements.txt
+    touch "$VENV_DIR/.deps_installed"
 fi
 
 # -----------------------------------------------------------
