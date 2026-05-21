@@ -17,6 +17,7 @@ from typing import List
 from src.cli import print_dry_run, print_error, print_info, print_step, print_success, print_warning
 from src.config import GillsystemsAIStackUpdaterConfig
 from src.gpu_detect import get_compute_tier
+from src.privilege import get_linux_sudo_prefix
 
 logger = logging.getLogger(__name__)
 
@@ -196,15 +197,21 @@ class LlamaBuilderLinux:
             return
 
         install_cmd = ["cmake", "--install", str(self.build_dir), "--prefix", str(self.install_dir)]
+        install_requires_privilege = _path_requires_privilege(self.install_dir)
         print_step(f"Installing binaries to {self.install_dir}...")
-        self.install_dir.mkdir(parents=True, exist_ok=True)
-        _run(install_cmd)
+        _ensure_directory(self.install_dir, privileged=install_requires_privilege)
+        _run_with_optional_privilege(install_cmd, privileged=install_requires_privilege)
         print_success(f"Installed to {self.install_dir}")
 
         # Symlink the binaries into /usr/local/bin for convenience
         bin_dir = self.install_dir / "bin"
         if bin_dir.exists():
-            _symlink_binaries(bin_dir, Path("/usr/local/bin"))
+            symlink_dir = Path("/usr/local/bin")
+            _symlink_binaries(
+                bin_dir,
+                symlink_dir,
+                privileged=_path_requires_privilege(symlink_dir),
+            )
 
         mirrored_bin_dir = _mirror_install_bin_tree(bin_dir, self.source_dir / "bin")
         if mirrored_bin_dir:
@@ -249,6 +256,44 @@ def _run(cmd: list[str], timeout: int = 3600, env: dict | None = None) -> None:
         raise RuntimeError(f"Command failed (exit {result.returncode}): {' '.join(cmd)}")
 
 
+def _run_privileged(cmd: list[str], timeout: int = 3600, env: dict | None = None) -> None:
+    """Run a command through sudo when Linux install paths require elevation."""
+    full_cmd = get_linux_sudo_prefix() + cmd
+    logger.debug("Running privileged command: %s", " ".join(full_cmd))
+    result = subprocess.run(full_cmd, timeout=timeout, env=env)
+    if result.returncode != 0:
+        raise RuntimeError(f"Command failed (exit {result.returncode}): {' '.join(full_cmd)}")
+
+
+def _run_with_optional_privilege(
+    cmd: list[str],
+    *,
+    privileged: bool,
+    timeout: int = 3600,
+    env: dict | None = None,
+) -> None:
+    if privileged:
+        _run_privileged(cmd, timeout=timeout, env=env)
+    else:
+        _run(cmd, timeout=timeout, env=env)
+
+
+def _path_requires_privilege(path: Path) -> bool:
+    """Return True when the current user cannot write the path or its nearest existing parent."""
+    candidate = path
+    while not candidate.exists() and candidate.parent != candidate:
+        candidate = candidate.parent
+    return not os.access(candidate, os.W_OK)
+
+
+def _ensure_directory(path: Path, *, privileged: bool) -> None:
+    """Create a directory tree either directly or via sudo."""
+    if privileged:
+        _run_privileged(["mkdir", "-p", str(path)])
+    else:
+        path.mkdir(parents=True, exist_ok=True)
+
+
 def _mirror_install_bin_tree(install_bin: Path, source_bin: Path) -> Path | None:
     """Copy the canonical install bin tree into the source-root bin directory."""
     if not install_bin.exists():
@@ -266,15 +311,21 @@ def _mirror_install_bin_tree(install_bin: Path, source_bin: Path) -> Path | None
     return source_bin
 
 
-def _symlink_binaries(src_dir: Path, dest_dir: Path) -> None:
+def _symlink_binaries(src_dir: Path, dest_dir: Path, *, privileged: bool = False) -> None:
     """Create symlinks in dest_dir pointing to binaries in src_dir."""
+    if privileged:
+        _run_privileged(["mkdir", "-p", str(dest_dir)])
+
     for binary in src_dir.iterdir():
         if binary.is_file() and os.access(str(binary), os.X_OK):
             link = dest_dir / binary.name
             try:
-                if link.exists() or link.is_symlink():
-                    link.unlink()
-                link.symlink_to(binary)
+                if privileged:
+                    _run_privileged(["ln", "-sfn", str(binary), str(link)])
+                else:
+                    if link.exists() or link.is_symlink():
+                        link.unlink()
+                    link.symlink_to(binary)
                 logger.debug("Symlinked %s → %s", binary, link)
             except OSError as exc:
                 logger.warning("Could not symlink %s: %s", binary, exc)
