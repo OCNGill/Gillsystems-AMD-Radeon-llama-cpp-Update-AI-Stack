@@ -170,6 +170,9 @@ class LlamaBuilderLinux:
 
         print_step(f"Configuring CMake (targets: {targets_str})...")
         self.build_dir.mkdir(parents=True, exist_ok=True)
+        cache_file = self.build_dir / "CMakeCache.txt"
+        if cache_file.exists():
+            cache_file.unlink()
         _run(cmake_args)
         print_success("CMake configuration complete.")
 
@@ -431,28 +434,10 @@ def _has_vulkan_loader() -> bool:
 def _has_vulkan_headers() -> bool:
     """Return True if Vulkan development headers are available.
 
-    Uses pkg-config and the pacman database as primary signals because the
-    SteamOS overlay filesystem can make /usr/include/vulkan/ invisible to
-    Python's Path.exists() even when the package is correctly installed.
+    This must match the concrete include path that CMake's FindVulkan looks
+    for. pkg-config `vulkan` is a loader signal on Arch/SteamOS, not a header
+    signal, and it creates false positives.
     """
-    # pkg-config / pkgconf: most portable, works across all distros.
-    for tool in ("pkgconf", "pkg-config"):
-        if shutil.which(tool):
-            try:
-                if subprocess.run([tool, "--exists", "vulkan"],
-                                  capture_output=True, timeout=5).returncode == 0:
-                    return True
-            except (OSError, subprocess.TimeoutExpired):
-                pass
-    # Arch / SteamOS: query the pacman database directly.
-    if shutil.which("pacman"):
-        try:
-            if subprocess.run(["pacman", "-Qq", "vulkan-headers"],
-                              capture_output=True, timeout=5).returncode == 0:
-                return True
-        except (OSError, subprocess.TimeoutExpired):
-            pass
-    # Final fallback: filesystem presence check.
     return any(path.exists() for path in _VULKAN_HEADER_CANDIDATES)
 
 
