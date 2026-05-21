@@ -335,11 +335,6 @@ restore_user_owned_paths() {
 cleanup() {
     local exit_code=$?
 
-    if [[ -n "$SUDO_KEEPALIVE_PID" ]]; then
-        kill "$SUDO_KEEPALIVE_PID" >/dev/null 2>&1 || true
-        wait "$SUDO_KEEPALIVE_PID" 2>/dev/null || true
-    fi
-
     # Restore file ownership BEFORE re-locking the filesystem.
     # Privileged build steps may leave root-owned artifacts in the repo directory;
     # chowning them back here prevents permission errors on subsequent runs.
@@ -357,6 +352,12 @@ cleanup() {
         if ! sudo -n steamos-readonly enable >/dev/null 2>&1; then
             echo "[Gillsystems AI Stack Updater] WARNING: Failed to re-lock SteamOS. Run manually: sudo steamos-readonly enable"
         fi
+    fi
+
+    # Kill keepalive LAST — after all privileged sudo operations complete.
+    if [[ -n "$SUDO_KEEPALIVE_PID" ]]; then
+        kill "$SUDO_KEEPALIVE_PID" >/dev/null 2>&1 || true
+        wait "$SUDO_KEEPALIVE_PID" 2>/dev/null || true
     fi
 
     exit "$exit_code"
