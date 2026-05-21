@@ -26,7 +26,6 @@ if not exist "%MODEL%" (
   -np 1 ^
   --port 8012 ^
   --host 192.0.2.93 ^
-  --chat-template gemma ^
   --context-shift ^
   --temperature 0.20 ^
   --top-k 20 ^
