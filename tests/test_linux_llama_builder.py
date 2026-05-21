@@ -108,19 +108,23 @@ def test_preflight_installs_steamos_vulkan_prereqs_when_missing(tmp_path: Path) 
          patch("src.linux.llama_builder._run_privileged", side_effect=fake_run_privileged):
         builder._preflight_check()
 
-    assert install_commands == [[
-        "pacman",
-        "-S",
-        "--needed",
-        "--noconfirm",
-        "base-devel",
-        "cmake",
-        "git",
-        "ninja",
-        "shaderc",
-        "spirv-headers",
-        "vulkan-headers",
-    ]]
+    assert install_commands == [
+        ["steamos-readonly", "disable"],
+        [
+            "pacman",
+            "-S",
+            "--needed",
+            "--noconfirm",
+            "base-devel",
+            "cmake",
+            "git",
+            "ninja",
+            "shaderc",
+            "spirv-headers",
+            "vulkan-headers",
+        ],
+        ["steamos-readonly", "enable"],
+    ]
     assert builder._use_ninja is True
 
 
@@ -149,6 +153,40 @@ def test_preflight_dry_run_reports_steamos_install_plan(tmp_path: Path) -> None:
         "pacman -S --needed --noconfirm base-devel cmake git ninja shaderc spirv-headers vulkan-headers" in message
         for message in dry_run_messages
     )
+    assert any("steamos-readonly disable" in message for message in dry_run_messages)
+    assert any("steamos-readonly enable" in message for message in dry_run_messages)
+
+
+def test_steamos_readonly_lock_restored_after_pacman_failure(tmp_path: Path) -> None:
+    """steamos-readonly enable must be called even when pacman exits non-zero."""
+    cfg = _make_cfg(tmp_path)
+    builder = LlamaBuilderLinux(cfg, ["gfx1033"])
+
+    privileged_calls: list[list[str]] = []
+
+    def fake_which(tool: str) -> str | None:
+        if tool == "pacman":
+            return "/usr/bin/pacman"
+        if tool == "hipcc":
+            return None
+        return None
+
+    def fake_run_privileged(cmd: list[str], timeout: int = 3600, env: dict | None = None) -> None:
+        privileged_calls.append(cmd)
+        if cmd[0] == "pacman":
+            raise RuntimeError("pacman failed (simulated)")
+
+    with patch("src.linux.llama_builder.shutil.which", side_effect=fake_which), \
+         patch("src.linux.llama_builder._detect_distro", return_value="steamos arch"), \
+         patch("src.linux.llama_builder._has_vulkan_headers", return_value=False), \
+         patch("src.linux.llama_builder._has_spirv_headers", return_value=False), \
+         patch("src.linux.llama_builder._run_privileged", side_effect=fake_run_privileged):
+        with pytest.raises(RuntimeError, match="pacman failed"):
+            builder._preflight_check()
+
+    # readonly must be re-enabled even after pacman failure
+    assert ["steamos-readonly", "disable"] in privileged_calls
+    assert ["steamos-readonly", "enable"] in privileged_calls
 
 
 def test_preflight_requires_hipcc_for_tier1(tmp_path: Path) -> None:

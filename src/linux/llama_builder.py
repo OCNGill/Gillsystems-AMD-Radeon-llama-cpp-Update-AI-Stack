@@ -372,6 +372,10 @@ def _is_arch_based(distro: str) -> bool:
     return any(name in distro for name in ("arch", "steamos", "manjaro", "endeavouros"))
 
 
+def _is_steamos(distro: str) -> bool:
+    return "steamos" in distro
+
+
 def _is_fedora_based(distro: str) -> bool:
     return any(name in distro for name in ("fedora", "rhel", "rocky", "alma", "centos"))
 
@@ -480,17 +484,32 @@ def _install_linux_build_prerequisites(
         f"({formatted_missing}). Installing them with {package_manager}..."
     )
 
+    steamos = _is_steamos(distro)
+
     if dry_run:
+        if steamos:
+            print_dry_run("Would unlock SteamOS read-only filesystem: steamos-readonly disable")
         for command in commands:
             print_dry_run(f"Would install Linux build prerequisites: {' '.join(command)}")
+        if steamos:
+            print_dry_run("Would re-lock SteamOS filesystem: steamos-readonly enable")
         return installs_ninja
 
     env = os.environ.copy()
     if package_manager == "apt-get":
         env["DEBIAN_FRONTEND"] = "noninteractive"
 
-    for command in commands:
-        _run_privileged(command, env=env)
+    if steamos:
+        print_step("SteamOS detected — temporarily disabling read-only filesystem...")
+        _run_privileged(["steamos-readonly", "disable"])
+
+    try:
+        for command in commands:
+            _run_privileged(command, env=env)
+    finally:
+        if steamos:
+            _run_privileged(["steamos-readonly", "enable"])
+            print_info("SteamOS filesystem re-locked (read-only restored).")
 
     print_success("Linux build prerequisites installed.")
     return installs_ninja
