@@ -9,6 +9,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Dedicated HTPC server launcher**: Added `executables/Gillsystems-HTPC-server-latest.sh` for the HTPC optimized for 16GB RAM + 8GB VRAM (RX 7600), supporting Gemma 4 architecture.
+- **Linux repository alignment**: Switched default `llama_cpp_repo` in `default_config.yaml` to the mainstream `ggml-org` fork to fix Gemma 4 compatibility errors caused by the outdated AMD tracking fork.
+- **Linux library resolution**: Patched `update-ai-stack.sh` output wrappers and `executables/*.sh` scripts to explicitly link canonical `/opt` `.so` paths in `LD_LIBRARY_PATH`. Ensure `llama-server` does not fail due to missing shared libraries.
 
 - **Example llama.cpp server launchers**: Added `Gillsystems_example_server_edit_per_node.bat` and `Gillsystems_example_server_edit_per_node.sh` in the repo root. Both create timestamped logs in `logs/` and ship Gemma-safe defaults with MTP flags omitted.
 - **Dedicated Tier 2 server-only launchers**: Added `executables/Gillsystems_Laptop_iGPU_server_example.bat` and `executables/Gillsystems_SteamDeck_iGPU_server_example.sh` for the Laptop and Steam Deck nodes without changing the shared root templates.
@@ -26,6 +29,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [1.0.1] — 2026-05-06 — Windows 11 Hardening (Current)
 
 ### Added
+- **Dedicated HTPC server launcher**: Added `executables/Gillsystems-HTPC-server-latest.sh` for the HTPC optimized for 16GB RAM + 8GB VRAM (RX 7600), supporting Gemma 4 architecture.
+- **Linux repository alignment**: Switched default `llama_cpp_repo` in `default_config.yaml` to the mainstream `ggml-org` fork to fix Gemma 4 compatibility errors caused by the outdated AMD tracking fork.
+- **Linux library resolution**: Patched `update-ai-stack.sh` output wrappers and `executables/*.sh` scripts to explicitly link canonical `/opt` `.so` paths in `LD_LIBRARY_PATH`. Ensure `llama-server` does not fail due to missing shared libraries.
 
 - **`bootstrap.ps1` — Windows Unicode support**: Sets `$env:PYTHONUTF8 = '1'` and forces `[Console]::OutputEncoding = UTF8` before launching the agent. Prevents Rich box-drawing characters from being mangled by PowerShell 5.1's `Tee-Object` pipe transcoding to OEM cp437.
 - **`bootstrap.ps1` — Stderr isolation**: Changed `2>&1 | Tee-Object` to `2>>$logFile | Tee-Object -Append`. This sends httpx INFO/DEBUG logs (which PowerShell 5.1 wraps in red `NativeCommandError` decorations) directly to the log file, keeping the console clean.
@@ -50,6 +56,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Windows repo split** (commit `fba910a`): Windows uses `ggml-org/llama.cpp` (no AMD native Windows build docs), config now has `llama_cpp_repo` (Linux) / `llama_cpp_repo_windows`.
 
 ### Added
+- **Dedicated HTPC server launcher**: Added `executables/Gillsystems-HTPC-server-latest.sh` for the HTPC optimized for 16GB RAM + 8GB VRAM (RX 7600), supporting Gemma 4 architecture.
+- **Linux repository alignment**: Switched default `llama_cpp_repo` in `default_config.yaml` to the mainstream `ggml-org` fork to fix Gemma 4 compatibility errors caused by the outdated AMD tracking fork.
+- **Linux library resolution**: Patched `update-ai-stack.sh` output wrappers and `executables/*.sh` scripts to explicitly link canonical `/opt` `.so` paths in `LD_LIBRARY_PATH`. Ensure `llama-server` does not fail due to missing shared libraries.
 
 - **`bootstrap.ps1`**: Self-contained PowerShell first-run bootstrap script. Auto-finds Python 3.11–3.14 via `py` launcher, PATH, or common install paths; downloads and silently installs Python 3.12.9 if none found; upgrades pip; installs requirements; launches agent with `Tee-Object` logging. Always keeps console window open on error (commit `6f6457c`).
 - **`--force` clean-build** (commit `fc85951`): Nukes CMake cache directory before configure — fixes stale HIP SDK link pollution. Also renames locked `.exe` files to `.exe.old` before `cmake --install`.
@@ -68,6 +77,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [0.9.0] — 2026-04-29 — Tier 1/2 Architecture & Hardware Profiling
 
 ### Added
+- **Dedicated HTPC server launcher**: Added `executables/Gillsystems-HTPC-server-latest.sh` for the HTPC optimized for 16GB RAM + 8GB VRAM (RX 7600), supporting Gemma 4 architecture.
+- **Linux repository alignment**: Switched default `llama_cpp_repo` in `default_config.yaml` to the mainstream `ggml-org` fork to fix Gemma 4 compatibility errors caused by the outdated AMD tracking fork.
+- **Linux library resolution**: Patched `update-ai-stack.sh` output wrappers and `executables/*.sh` scripts to explicitly link canonical `/opt` `.so` paths in `LD_LIBRARY_PATH`. Ensure `llama-server` does not fail due to missing shared libraries.
 
 - **Tier-based hardware profiling** (commit `209fe27`): Tier 1 (full HIP/ROCm) vs Tier 2 (Vulkan + HIP UMA) detection. Flash Attention support (`GGML_HIP_ROCWMMA_FATTN=ON`). UMA memory controls for integrated GPUs.
 - **Bleeding-edge mode** (commit `baf4f54`): `--bleeding-edge` flag compiles from `master` branch for zero-day GGML tensor format support (e.g. Gemma 4 CoT, sliding window attention).
@@ -79,6 +91,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [0.8.0] — 2026-04-29 — Full-Stack Implementation (MVP)
 
 ### Added
+- **Dedicated HTPC server launcher**: Added `executables/Gillsystems-HTPC-server-latest.sh` for the HTPC optimized for 16GB RAM + 8GB VRAM (RX 7600), supporting Gemma 4 architecture.
+- **Linux repository alignment**: Switched default `llama_cpp_repo` in `default_config.yaml` to the mainstream `ggml-org` fork to fix Gemma 4 compatibility errors caused by the outdated AMD tracking fork.
+- **Linux library resolution**: Patched `update-ai-stack.sh` output wrappers and `executables/*.sh` scripts to explicitly link canonical `/opt` `.so` paths in `LD_LIBRARY_PATH`. Ensure `llama-server` does not fail due to missing shared libraries.
 
 - **Core orchestrator** (`main.py`): State machine with SQLite checkpoint ledger, reboot-resilient resume.
 - **Version intelligence** (`version_intel.py`): Checks GitHub API for llama.cpp releases, AMD repo for ROCm versions.
@@ -97,6 +112,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [0.0.1] — 2026-04-16 — Initial Concept
 
 ### Added
+- **Dedicated HTPC server launcher**: Added `executables/Gillsystems-HTPC-server-latest.sh` for the HTPC optimized for 16GB RAM + 8GB VRAM (RX 7600), supporting Gemma 4 architecture.
+- **Linux repository alignment**: Switched default `llama_cpp_repo` in `default_config.yaml` to the mainstream `ggml-org` fork to fix Gemma 4 compatibility errors caused by the outdated AMD tracking fork.
+- **Linux library resolution**: Patched `update-ai-stack.sh` output wrappers and `executables/*.sh` scripts to explicitly link canonical `/opt` `.so` paths in `LD_LIBRARY_PATH`. Ensure `llama-server` does not fail due to missing shared libraries.
 
 - Agent architecture defined.
 - Conductor files established: `conductor/index.md`, `product.md`, `tech-stack.md`, `tracks.md`, `workflow.md`, `setup_state.json`.

@@ -194,8 +194,8 @@ paths:
   log_dir:   "logs"
 
 repo:
-  # Linux uses AMD's maintained ROCm fork (per AMD official docs)
-  llama_cpp_repo:         "https://github.com/ROCm/llama.cpp.git"
+  # Linux and Windows now use the mainstream ggml-org fork
+  llama_cpp_repo:         "https://github.com/ggml-org/llama.cpp.git"
   # Windows uses mainstream ggml-org fork (AMD has no native Windows ROCm build docs)
   llama_cpp_repo_windows: "https://github.com/ggml-org/llama.cpp.git"
   bleeding_edge: false    # set true or use --bleeding-edge flag
