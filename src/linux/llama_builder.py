@@ -40,10 +40,12 @@ class LlamaBuilderLinux:
         self.cfg = cfg
         self.gpu_targets = gpu_targets
         self.source_dir = Path(cfg.paths.llama_cpp_source).expanduser()
-        self.install_dir = Path(cfg.paths.llama_cpp_install_linux)
-        self.build_dir = self.source_dir / "build-hip"
+        self.install_dir = Path(cfg.paths.llama_cpp_install_linux).expanduser()
         # Computed once at construction; all methods use self.use_hip for consistency.
         self.use_hip = bool(shutil.which("hipcc"))
+        # Name the build directory by the actual backend so HIP and Vulkan builds
+        # never share the same CMakeCache and pollute each other's object files.
+        self.build_dir = self.source_dir / ("build-hip" if self.use_hip else "build-vulkan")
 
     def build_and_install(self) -> None:
         """Full clone → cmake configure → build → install cycle."""
@@ -149,7 +151,7 @@ class LlamaBuilderLinux:
                 "-DLLAMA_CURL=ON",   # AMD docs require this flag
             ]
         else:
-            cmake_args.append("-DGGML_VULKAN=ON")
+            cmake_args += ["-DGGML_VULKAN=ON", "-DGGML_HIP=OFF"]
             print_info("Enabling Vulkan backend (HIP fallback for mobile/edge targets).")
 
         if self._use_ninja:
@@ -174,7 +176,7 @@ class LlamaBuilderLinux:
         env = os.environ.copy()
 
         # AMD docs: set HIPCXX and HIP_PATH via hipconfig before cmake build
-        if shutil.which("hipconfig"):
+        if self.use_hip and shutil.which("hipconfig"):
             try:
                 hipcxx_dir = subprocess.check_output(
                     ["hipconfig", "-l"], text=True
@@ -248,6 +250,7 @@ class LlamaBuilderLinux:
             print_dry_run("Would validate: llama-cli --version")
             return
 
+        validated: list[str] = []
         for binary in ("llama-cli", "llama-server"):
             binary_path = self.install_dir / "bin" / binary
             if binary_path.exists():
@@ -258,11 +261,14 @@ class LlamaBuilderLinux:
                     )
                     output = (result.stdout + result.stderr).strip().split("\n")[0]
                     print_success(f"{binary}: {output[:80]}")
-                    return
+                    validated.append(binary)
                 except Exception as exc:
                     print_warning(f"Could not run {binary}: {exc}")
+            else:
+                print_warning(f"Expected binary not found: {binary_path}")
 
-        print_warning("Could not validate llama.cpp binary — check installation manually.")
+        if not validated:
+            print_warning("Could not validate any llama.cpp binaries — check installation manually.")
 
 
 # ---------------------------------------------------------------------------
@@ -396,10 +402,54 @@ def _find_first_available_command(candidates: tuple[str, ...]) -> str | None:
 
 
 def _has_vulkan_headers() -> bool:
+    """Return True if Vulkan development headers are available.
+
+    Uses pkg-config and the pacman database as primary signals because the
+    SteamOS overlay filesystem can make /usr/include/vulkan/ invisible to
+    Python's Path.exists() even when the package is correctly installed.
+    """
+    # pkg-config / pkgconf: most portable, works across all distros.
+    for tool in ("pkgconf", "pkg-config"):
+        if shutil.which(tool):
+            try:
+                if subprocess.run([tool, "--exists", "vulkan"],
+                                  capture_output=True, timeout=5).returncode == 0:
+                    return True
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+    # Arch / SteamOS: query the pacman database directly.
+    if shutil.which("pacman"):
+        try:
+            if subprocess.run(["pacman", "-Qq", "vulkan-headers"],
+                              capture_output=True, timeout=5).returncode == 0:
+                return True
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    # Final fallback: filesystem presence check.
     return any(path.exists() for path in _VULKAN_HEADER_CANDIDATES)
 
 
 def _has_spirv_headers() -> bool:
+    """Return True if SPIRV-Headers development headers are available.
+
+    Same strategy as _has_vulkan_headers: prefer package-manager queries over
+    filesystem paths to avoid SteamOS overlay visibility issues.
+    """
+    for tool in ("pkgconf", "pkg-config"):
+        if shutil.which(tool):
+            try:
+                if subprocess.run([tool, "--exists", "SPIRV-Headers"],
+                                  capture_output=True, timeout=5).returncode == 0:
+                    return True
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+    if shutil.which("pacman"):
+        try:
+            if subprocess.run(["pacman", "-Qq", "spirv-headers"],
+                              capture_output=True, timeout=5).returncode == 0:
+                return True
+        except (OSError, subprocess.TimeoutExpired):
+            pass
     return any(path.exists() for path in _SPIRV_HEADER_CANDIDATES)
 
 
