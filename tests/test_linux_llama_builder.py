@@ -89,6 +89,21 @@ def test_install_uses_local_commands_for_user_writable_paths(tmp_path: Path) -> 
     mock_symlink.assert_called_once_with(builder.install_dir / "bin", Path("/usr/local/bin"), privileged=False)
 
 
+def test_configure_cmake_removes_stale_cache_before_reconfigure(tmp_path: Path) -> None:
+    cfg = _make_cfg(tmp_path)
+    builder = LlamaBuilderLinux(cfg, ["gfx1033"])
+    builder._use_ninja = True
+    builder.build_dir.mkdir(parents=True)
+    cache_file = builder.build_dir / "CMakeCache.txt"
+    cache_file.write_text("Vulkan_INCLUDE_DIR:PATH=Vulkan_INCLUDE_DIR-NOTFOUND\n", encoding="utf-8")
+
+    with patch("src.linux.llama_builder._run") as mock_run:
+        builder._configure_cmake()
+
+    assert not cache_file.exists()
+    mock_run.assert_called_once()
+
+
 def test_preflight_installs_steamos_vulkan_prereqs_when_missing(tmp_path: Path) -> None:
     cfg = _make_cfg(tmp_path)
     builder = LlamaBuilderLinux(cfg, ["gfx1033"])
@@ -180,6 +195,26 @@ def test_detect_missing_linux_requirements_reports_vulkan_loader_when_missing() 
     assert missing == ["Vulkan loader"]
 
 
+def test_detect_missing_linux_requirements_reports_vulkan_headers_when_missing() -> None:
+    def fake_which(tool: str) -> str | None:
+        return {
+            "cmake": "/usr/bin/cmake",
+            "git": "/usr/bin/git",
+            "cc": "/usr/bin/cc",
+            "c++": "/usr/bin/c++",
+            "ninja": "/usr/bin/ninja",
+            "glslc": "/usr/bin/glslc",
+        }.get(tool)
+
+    with patch("src.linux.llama_builder.shutil.which", side_effect=fake_which), \
+         patch("src.linux.llama_builder._has_vulkan_loader", return_value=True), \
+         patch("src.linux.llama_builder._has_vulkan_headers", return_value=False), \
+         patch("src.linux.llama_builder._has_spirv_headers", return_value=True):
+        missing = linux_llama_builder._detect_missing_linux_requirements(use_hip=False)
+
+    assert missing == ["Vulkan headers"]
+
+
 def test_arch_vulkan_install_plan_includes_icd_loader() -> None:
     with patch("src.linux.llama_builder.shutil.which", side_effect=lambda tool: "/usr/bin/pacman" if tool == "pacman" else None):
         package_manager, commands, installs_ninja = linux_llama_builder._build_linux_dependency_install_plan(
@@ -190,6 +225,21 @@ def test_arch_vulkan_install_plan_includes_icd_loader() -> None:
     assert package_manager == "pacman"
     assert installs_ninja is True
     assert "vulkan-icd-loader" in commands[0]
+
+
+def test_has_vulkan_headers_ignores_pkg_config_loader_signal() -> None:
+    def fake_which(tool: str) -> str | None:
+        return "/usr/bin/pkg-config" if tool in {"pkg-config", "pkgconf"} else None
+
+    def fake_exists(self: Path) -> bool:
+        return False
+
+    with patch("src.linux.llama_builder.shutil.which", side_effect=fake_which), \
+         patch("src.linux.llama_builder.subprocess.run") as mock_run, \
+         patch("pathlib.Path.exists", new=fake_exists):
+        assert linux_llama_builder._has_vulkan_headers() is False
+
+    mock_run.assert_not_called()
 
 
 def test_preflight_dry_run_reports_steamos_install_plan(tmp_path: Path) -> None:
