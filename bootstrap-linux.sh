@@ -130,6 +130,13 @@ export PIP_DISABLE_PIP_VERSION_CHECK=1
 export PIP_NO_CACHE_DIR=1
 export PYTHONUTF8=1
 
+is_steamos() {
+    if [[ -f /etc/os-release ]] && grep -qi "steamos" /etc/os-release; then
+        return 0
+    fi
+    return 1
+}
+
 if [[ $EUID -eq 0 && -n "$REPO_OWNER_HOME" ]]; then
     export HOME="$REPO_OWNER_HOME"
 fi
@@ -233,6 +240,15 @@ ensure_sudo_session() {
 
     export GILLSYSTEMS_SUDO_NONINTERACTIVE=1
 
+    if is_steamos; then
+        echo "[Gillsystems AI Stack Updater] SteamOS detected. Unlocking read-only filesystem globally for this run..."
+        if sudo -n steamos-readonly disable; then
+            export STEAMOS_UNLOCKED=1
+        else
+            echo "[Gillsystems AI Stack Updater] WARNING: Failed to unlock SteamOS filesystem."
+        fi
+    fi
+
     if [[ -z "$SUDO_KEEPALIVE_PID" ]]; then
         (
             while true; do
@@ -322,6 +338,11 @@ cleanup() {
     if [[ -n "$SUDO_KEEPALIVE_PID" ]]; then
         kill "$SUDO_KEEPALIVE_PID" >/dev/null 2>&1 || true
         wait "$SUDO_KEEPALIVE_PID" 2>/dev/null || true
+    fi
+
+    if [[ "${STEAMOS_UNLOCKED:-0}" -eq 1 ]]; then
+        echo "[Gillsystems AI Stack Updater] Re-locking SteamOS filesystem..."
+        sudo -n steamos-readonly enable >/dev/null 2>&1 || true
     fi
 
     restore_user_owned_paths || true
