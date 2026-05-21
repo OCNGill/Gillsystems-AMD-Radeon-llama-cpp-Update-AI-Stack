@@ -18,7 +18,15 @@ Launch the updater agent directly from your terminal:
 ```bash
 ./update-ai-stack.sh
 ```
-*(The script will request `sudo` permissions as needed. A timestamped run log is written to `logs/`.)*
+*(Live runs request `sudo` once, keep it warm for the run, and keep the Python venv/log handling in user space. Dry-runs do not prompt for `sudo`. A timestamped run log is written to `logs/`.)*
+
+If Konsole or SteamOS warns that it could not find `update-ai-stack.sh` and falls back to `/bin/bash`, the terminal profile is pointing at a stale repo path or the execute bit was stripped. Use this as the safe launcher command in terminal profiles:
+
+```bash
+/bin/bash "/absolute/path/to/update-ai-stack.sh"
+```
+
+You can also run `bash ./update-ai-stack.sh --check-env` once to validate the Linux launcher and auto-repair the execute bit when the repo checkout is writable.
 
 ### Example llama.cpp Server Launchers
 

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+import sys
 from unittest.mock import MagicMock, call, patch
 
 import pytest
@@ -161,11 +162,35 @@ class TestLinuxRebootHandler:
         """The systemd service content should reference the launcher."""
         from src.linux.reboot_handler import _SERVICE_TEMPLATE, RebootHandler
 
-        handler = RebootHandler(live_cfg)
-        content = _SERVICE_TEMPLATE.format(
-            launcher=str(handler.launcher_path),
-            service_name="gillsystems-ai-stack-updater-resume.service",
-        )
+        with patch.dict(
+            "os.environ",
+            {
+                "GILLSYSTEMS_REPO_OWNER": "deck",
+                "GILLSYSTEMS_REPO_OWNER_HOME": "/home/deck",
+            },
+            clear=False,
+        ):
+            handler = RebootHandler(live_cfg)
+            content = _SERVICE_TEMPLATE.format(
+                launcher=str(handler.launcher_path),
+                working_dir=str(handler.launcher_path.parent),
+                owner=handler.repo_owner,
+                owner_home=handler.repo_owner_home,
+                service_name="gillsystems-ai-stack-updater-resume.service",
+            )
 
         assert "gillsystems-ai-stack-updater-resume.service" in content
         assert "oneshot" in content
+        assert 'Environment="GILLSYSTEMS_REPO_OWNER=deck"' in content
+        assert 'Environment="HOME=/home/deck"' in content
+
+    def test_rocm_run_privileged_uses_noninteractive_sudo_when_warmed(self):
+        from src.linux.rocm_updater import _run_privileged
+
+        with patch.object(sys, "platform", "linux"), \
+             patch("src.privilege.os.geteuid", return_value=1000, create=True), \
+             patch.dict("src.privilege.os.environ", {"GILLSYSTEMS_SUDO_NONINTERACTIVE": "1"}, clear=False), \
+             patch("src.linux.rocm_updater.subprocess.run") as mock_run:
+            _run_privileged(["apt-get", "install", "-y", "fake.deb"])
+
+        assert mock_run.call_args.args[0][:2] == ["sudo", "-n"]

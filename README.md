@@ -85,11 +85,18 @@ update-ai-stack.bat --force
 ### Linux
 
 ```bash
-chmod +x update-ai-stack.sh
 ./update-ai-stack.sh
 ```
 
-Re-runs with `sudo` automatically if not already root. Installs Python dependencies via pip if missing. Both launchers write timestamped run logs into `logs/`.
+Live Linux runs request `sudo` once, keep it warm for the rest of the run, and leave the Python venv/log handling in user space so Kubuntu and Steam Deck do not accumulate root-owned runtime files. Dry-run mode does not prompt for `sudo`. Both launchers write timestamped run logs into `logs/`.
+
+If a Konsole or SteamOS terminal profile says `Could not find '.../update-ai-stack.sh', starting '/bin/bash' instead`, the launcher path is stale or the execute bit was stripped. The safe profile command is:
+
+```bash
+/bin/bash "/absolute/path/to/update-ai-stack.sh"
+```
+
+Running the launcher once via `bash ./update-ai-stack.sh --check-env` also repairs the execute bit on the Linux launcher files when the repo checkout is writable.
 
 ### Example llama.cpp Server Launchers
 

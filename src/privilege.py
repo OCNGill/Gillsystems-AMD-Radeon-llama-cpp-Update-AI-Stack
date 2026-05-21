@@ -1,7 +1,8 @@
 """
-privilege.py — Privilege elevation for Gillsystems AI Stack Updater.
+privilege.py — Privilege handling for Gillsystems AI Stack Updater.
 
-Linux:  checks os.geteuid() == 0, re-executes with sudo if needed.
+Linux:  validates a usable sudo session without re-executing the whole process
+as root during normal interactive runs.
 Windows: checks IsUserAnAdmin(), re-launches with ShellExecute runas if needed.
 """
 from __future__ import annotations
@@ -28,19 +29,27 @@ def is_admin() -> bool:
 
 def ensure_admin() -> None:
     """
-    Verify admin/root status. If not elevated, re-launch with elevation and exit.
-    On Windows this opens a UAC prompt. On Linux it re-executes via sudo.
+    Verify privilege prerequisites for the current platform.
+
+    On Windows this opens a UAC prompt. On Linux it validates that sudo is
+    available and, when needed, warms a sudo session instead of re-executing
+    the entire Python process as root.
     """
+    if sys.platform == "win32":
+        if is_admin():
+            logger.debug("Privilege check passed — running as admin/root.")
+            return
+
+        logger.info("Not running with elevated privileges. Requesting elevation...")
+        _elevate_windows()
+        return
+
     if is_admin():
         logger.debug("Privilege check passed — running as admin/root.")
         return
 
-    logger.info("Not running with elevated privileges. Requesting elevation...")
-
-    if sys.platform == "win32":
-        _elevate_windows()
-    else:
-        _elevate_linux()
+    logger.info("Linux live run detected without root. Validating sudo session...")
+    _prepare_linux_sudo()
 
 
 # ---------------------------------------------------------------------------
@@ -86,35 +95,53 @@ def _elevate_windows() -> NoReturn:
 
 
 # ---------------------------------------------------------------------------
-# Linux elevation
+# Linux privilege preparation
 # ---------------------------------------------------------------------------
 
 
-def _elevate_linux() -> NoReturn:
-    """Re-execute the current script via sudo."""
+def _prepare_linux_sudo() -> None:
+    """Ensure sudo is available and ready for Linux privileged sub-commands."""
     if not _sudo_available():
         raise PrivilegeError(
             "sudo is not available and process is not root. "
-            "Run with: sudo python3 src/main.py"
+            "Run via ./update-ai-stack.sh from an interactive Linux shell."
         )
 
-    logger.info("Re-executing via sudo...")
+    if os.environ.get("GILLSYSTEMS_SUDO_NONINTERACTIVE") == "1" and _sudo_validate(non_interactive=True):
+        logger.debug("Linux sudo session already primed by the launcher.")
+        return
 
-    cmd = ["sudo", sys.executable] + sys.argv
-    logger.debug("Elevator command: %s", " ".join(cmd))
-
-    # Replace the current process — audit log is written before this
-    os.execvp("sudo", cmd)  # type: ignore[attr-defined]
-    # execvp never returns on success
-    raise PrivilegeError("os.execvp failed unexpectedly.")
-
-
-def _sudo_available() -> bool:
     try:
-        result = subprocess.run(
-            ["sudo", "--version"],
-            capture_output=True, timeout=5
-        )
+        subprocess.run(["sudo", "-v"], check=True, timeout=30)
+    except subprocess.CalledProcessError as exc:
+        raise PrivilegeError(
+            "sudo authentication failed. Re-run ./update-ai-stack.sh from an interactive Linux terminal."
+        ) from exc
+
+
+def get_linux_sudo_prefix() -> list[str]:
+    """Return the sudo prefix appropriate for Linux privileged helper commands."""
+    if sys.platform == "win32" or is_admin():
+        return []
+
+    if os.environ.get("GILLSYSTEMS_SUDO_NONINTERACTIVE") == "1":
+        return ["sudo", "-n"]
+
+    return ["sudo"]
+
+
+def _sudo_validate(non_interactive: bool = False) -> bool:
+    cmd = ["sudo"]
+    if non_interactive:
+        cmd.append("-n")
+    cmd.append("-v")
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, timeout=5)
         return result.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
+
+
+def _sudo_available() -> bool:
+    return _sudo_validate() or _sudo_validate(non_interactive=True)
