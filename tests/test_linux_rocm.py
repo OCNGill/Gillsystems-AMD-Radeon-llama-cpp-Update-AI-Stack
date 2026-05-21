@@ -95,6 +95,48 @@ class TestROCmUpdaterDryRun:
         mock_run.assert_not_called()
 
 
+class TestROCmInstallerDownload:
+    def test_resolve_installer_download_url_from_ubuntu_listing(self):
+        from src.linux.rocm_updater import _resolve_installer_download_url
+
+        html = """
+        <html>
+          <body>
+            <a href="amdgpu-install_7.2.3.70203-1_all.deb">amdgpu-install_7.2.3.70203-1_all.deb</a>
+          </body>
+        </html>
+        """
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.headers.get_content_charset.return_value = "utf-8"
+        response.read.return_value = html.encode("utf-8")
+
+        with patch("src.linux.rocm_updater.urllib.request.urlopen", return_value=response):
+            url = _resolve_installer_download_url(
+                "https://repo.radeon.com/amdgpu-install/latest/ubuntu/noble/",
+                "ubuntu debian",
+            )
+
+        assert url == "https://repo.radeon.com/amdgpu-install/latest/ubuntu/noble/amdgpu-install_7.2.3.70203-1_all.deb"
+
+    def test_validate_downloaded_package_rejects_html_payload(self, tmp_path: Path):
+        from src.linux.rocm_updater import _validate_downloaded_package
+
+        fake_pkg = tmp_path / "amdgpu-install.deb"
+        fake_pkg.write_text("<html><body>index listing</body></html>", encoding="utf-8")
+
+        with pytest.raises(ValueError, match="not a valid Debian package archive"):
+            _validate_downloaded_package(fake_pkg, "ubuntu debian")
+
+    def test_validate_downloaded_package_accepts_deb_archive_signature(self, tmp_path: Path):
+        from src.linux.rocm_updater import _validate_downloaded_package
+
+        realish_pkg = tmp_path / "amdgpu-install.deb"
+        realish_pkg.write_bytes(b"!<arch>\n" + b"rest-of-deb")
+
+        _validate_downloaded_package(realish_pkg, "ubuntu debian")
+
+
 # ---------------------------------------------------------------------------
 # ROCmUpdater — reboot detection
 # ---------------------------------------------------------------------------

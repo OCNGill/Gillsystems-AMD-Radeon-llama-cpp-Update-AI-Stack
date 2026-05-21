@@ -13,6 +13,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Optional
@@ -78,9 +79,15 @@ class ROCmUpdater:
 
     def _download_amdgpu_install(self, distro: str) -> Optional[Path]:
         """Download the amdgpu-install .deb or .rpm package."""
-        url = self._build_installer_url(distro)
-        if not url:
+        listing_url = self._build_installer_url(distro)
+        if not listing_url:
             print_warning(f"Unknown distro '{distro}' — cannot construct amdgpu-install URL.")
+            return None
+
+        try:
+            url = _resolve_installer_download_url(listing_url, distro)
+        except Exception as exc:
+            print_error(f"Could not resolve amdgpu-install package URL from {listing_url}: {exc}")
             return None
 
         print_step(f"Downloading amdgpu-install from: {url}")
@@ -95,6 +102,7 @@ class ROCmUpdater:
 
         try:
             urllib.request.urlretrieve(url, tmp_path)
+            _validate_downloaded_package(Path(tmp_path), distro)
             print_success(f"Downloaded to {tmp_path}")
             return Path(tmp_path)
         except Exception as exc:
@@ -276,6 +284,46 @@ def _rhel_major_version() -> str:
         return ver
     except Exception:
         return "8"
+
+
+def _resolve_installer_download_url(listing_url: str, distro: str) -> str:
+    """Resolve the actual AMD installer package URL from a directory listing."""
+    suffix = ".deb" if _is_debian_based(distro) else ".rpm"
+    if listing_url.endswith(suffix):
+        return listing_url
+
+    with urllib.request.urlopen(listing_url, timeout=30) as response:
+        charset = response.headers.get_content_charset() or "utf-8"
+        content = response.read().decode(charset, errors="replace")
+
+    pattern = rf'href=["\']([^"\']*amdgpu-install[^"\']+\{suffix})["\']'
+    matches = re.findall(pattern, content, flags=re.IGNORECASE)
+    if not matches:
+        raise ValueError(f"No amdgpu-install package ending in {suffix} found")
+
+    package_href = matches[0]
+    return urllib.parse.urljoin(listing_url, package_href)
+
+
+def _validate_downloaded_package(pkg_path: Path, distro: str) -> None:
+    """Reject HTML/error pages saved with a package extension before install."""
+    header = pkg_path.read_bytes()[:128]
+
+    if _is_debian_based(distro):
+        if not header.startswith(b"!<arch>\n"):
+            preview = header.decode("utf-8", errors="replace").strip()
+            raise ValueError(
+                "Downloaded file is not a valid Debian package archive. "
+                f"First bytes: {preview[:80]}"
+            )
+        return
+
+    if not header.startswith(b"\xed\xab\xee\xdb"):
+        preview = header.decode("utf-8", errors="replace").strip()
+        raise ValueError(
+            "Downloaded file is not a valid RPM package archive. "
+            f"First bytes: {preview[:80]}"
+        )
 
 
 def _run_privileged(
