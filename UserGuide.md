@@ -60,14 +60,14 @@ executables/server_deck_vulkan_linux.sh
 
 **Windows Laptop (Vega 6 iGPU / gfx90c — HIP UMA, Tier 2):**
 ```bat
-executables/server_mobile_uma_windows_example.bat
+executables/server_mobile_uma_windows.bat
 ```
 - Edit context and paths to suit; template ships with Gemma-safe defaults.
 
-**Editable per-node root templates (start here for a new node):**
+**Editable per-node templates in `executables/` (start here for a new node):**
 ```text
-Gillsystems_example_server_edit_per_node.bat
-Gillsystems_example_server_edit_per_node.sh
+executables/server_edit_per_node.bat
+executables/server_edit_per_node.sh
 ```
 
 All launchers use `--temperature 0` for fully deterministic output, `--jinja`, `--context-shift`, `--metrics`, and `--no-mmap`.

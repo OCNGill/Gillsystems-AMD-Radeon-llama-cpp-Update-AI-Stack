@@ -4,7 +4,7 @@ setlocal EnableExtensions EnableDelayedExpansion
 cd /d "%~dp0"
 
 :: ============================================================
-:: Gillsystems Example Server Launcher (Windows)
+:: Gillsystems Editable Server Launcher (Windows)
 :: Edit the values below for each node before production use.
 ::
 :: Note: Gemma 4 MTP flags are intentionally omitted for now.
@@ -33,7 +33,7 @@ for /f %%I in ('powershell -NoProfile -Command "(Get-Date).ToString('yyyyMMdd_HH
 set "NODE_NAME=%COMPUTERNAME%"
 set "LOG_FILE=%LOG_DIR%\server_%NODE_NAME%_%TIMESTAMP%.log"
 
-echo Starting Gillsystems example server...
+echo Starting Gillsystems server launcher...
 echo Model: %MODEL_PATH%
 echo Log:   %LOG_FILE%
 echo.

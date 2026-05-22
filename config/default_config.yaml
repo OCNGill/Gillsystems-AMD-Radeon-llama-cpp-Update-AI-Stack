@@ -30,7 +30,7 @@ paths:
   llama_cpp_install_linux:   "/opt/gillsystems/llama.cpp"   # canonical install root; binaries are also mirrored to <llama_cpp_source>/bin
   llama_cpp_install_windows: "C:\\Gillsystems\\llama.cpp" # canonical install root; binaries are also mirrored to <llama_cpp_source>/bin
   llama_cpp_source:          "~/src/llama.cpp"              # source checkout used for git/cmake; launchers can target the mirrored <source>/bin path
-  state_dir:                 "state"
+  state_dir:                 "state"                        # runtime state is isolated beneath this root as <state_dir>/<platform>/<node> unless you supply templates
   log_dir:                   "logs"
 
 # ------------------------------------------------------------

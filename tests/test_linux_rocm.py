@@ -209,6 +209,7 @@ class TestLinuxRebootHandler:
             {
                 "GILLSYSTEMS_REPO_OWNER": "deck",
                 "GILLSYSTEMS_REPO_OWNER_HOME": "/home/deck",
+                "GILLSYSTEMS_NODE_NAME": "steam-deck",
             },
             clear=False,
         ):
@@ -216,13 +217,15 @@ class TestLinuxRebootHandler:
             content = _SERVICE_TEMPLATE.format(
                 launcher=str(handler.launcher_path),
                 working_dir=str(handler.launcher_path.parent),
+                node_id=handler.node_id,
                 owner=handler.repo_owner,
                 owner_home=handler.repo_owner_home,
-                service_name="gillsystems-ai-stack-updater-resume.service",
+                service_name=handler.service_name,
             )
 
-        assert "gillsystems-ai-stack-updater-resume.service" in content
+        assert handler.service_name in content
         assert "oneshot" in content
+        assert 'Environment="GILLSYSTEMS_NODE_NAME=steam-deck"' in content
         assert 'Environment="GILLSYSTEMS_REPO_OWNER=deck"' in content
         assert 'Environment="HOME=/home/deck"' in content
 

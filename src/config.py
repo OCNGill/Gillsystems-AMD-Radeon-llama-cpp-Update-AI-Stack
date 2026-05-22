@@ -12,6 +12,13 @@ from typing import List, Optional
 import yaml
 from pydantic import BaseModel, Field, field_validator
 
+from src.runtime import (
+    get_platform_id,
+    get_runtime_identity,
+    has_runtime_placeholders,
+    resolve_runtime_path,
+)
+
 
 # ---------------------------------------------------------------------------
 # Sub-models
@@ -37,6 +44,31 @@ class PathsConfig(BaseModel):
     llama_cpp_source: str = Field(default="~/src/llama.cpp")
     state_dir: str = Field(default="state")
     log_dir: str = Field(default="logs")
+
+    def resolve_llama_cpp_install_linux(self) -> Path:
+        return resolve_runtime_path(self.llama_cpp_install_linux)
+
+    def resolve_llama_cpp_install_windows(self) -> Path:
+        return resolve_runtime_path(self.llama_cpp_install_windows)
+
+    def resolve_llama_cpp_install_current(self) -> Path:
+        if get_platform_id() == "windows":
+            return self.resolve_llama_cpp_install_windows()
+        return self.resolve_llama_cpp_install_linux()
+
+    def resolve_llama_cpp_source(self) -> Path:
+        return resolve_runtime_path(self.llama_cpp_source)
+
+    def resolve_state_dir(self) -> Path:
+        path = resolve_runtime_path(self.state_dir)
+        if has_runtime_placeholders(self.state_dir):
+            return path
+
+        identity = get_runtime_identity()
+        return path / identity["platform"] / identity["node"]
+
+    def resolve_log_dir(self) -> Path:
+        return resolve_runtime_path(self.log_dir)
 
 
 class RepoConfig(BaseModel):

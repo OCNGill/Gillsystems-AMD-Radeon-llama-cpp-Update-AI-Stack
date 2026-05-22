@@ -98,11 +98,11 @@ Running the launcher once via `bash ./update-ai-stack.sh --check-env` also repai
 
 See the [Server Launchers](#server-launchers) section below for the full details.
 
-Editable per-node root templates (copy, edit the paths, run):
+Editable per-node templates in `executables/` (copy, edit the paths, run):
 
 ```text
-Gillsystems_example_server_edit_per_node.bat
-Gillsystems_example_server_edit_per_node.sh
+executables/server_edit_per_node.bat
+executables/server_edit_per_node.sh
 ```
 
 Production-ready node-specific launchers in `executables/`:
@@ -110,7 +110,7 @@ Production-ready node-specific launchers in `executables/`:
 ```text
 executables/server_desktop_rocm_linux_latest.sh          # KUbuntu, RX 7600
 executables/server_deck_vulkan_linux.sh         # SteamOS, RDNA 2 APU
-executables/server_mobile_uma_windows_example.bat # Windows, Vega 6 iGPU
+executables/server_mobile_uma_windows.bat         # Windows, Vega 6 iGPU
 ```
 
 ### Dry Run (safe preview — no changes made)
@@ -139,8 +139,8 @@ v2.0 ships production-quality server launchers for every Gillsystems node. Each 
 |---|---|---|---|---|---|---|
 | `executables/server_desktop_rocm_linux_latest.sh` | desktop-node | KUbuntu | RX 7600 / gfx1102 | ROCm/HIP | 65 536 | 0 (greedy) |
 | `executables/server_deck_vulkan_linux.sh` | deck-node | SteamOS | RDNA 2 APU / gfx1033 | Vulkan | 32 768 | 0 (greedy) |
-| `executables/server_mobile_uma_windows_example.bat` | mobile-node | Windows 10 | Vega 6 / gfx90c | HIP UMA | configurable | configurable |
-| `Gillsystems_example_server_edit_per_node.bat` / `.sh` | Any | Both | Any | Any | edit me | edit me |
+| `executables/server_mobile_uma_windows.bat` | mobile-node | Windows 10 | Vega 6 / gfx90c | HIP UMA | configurable | configurable |
+| `executables/server_edit_per_node.bat` / `.sh` | Any | Both | Any | Any | edit me | edit me |
 
 **All launchers:**
 - Use `--temperature 0` for fully deterministic, reproducible outputs
@@ -374,8 +374,8 @@ When a ROCm driver update requires a reboot:
 | Ubuntu | 24.04 LTS | ✅ Full | |
 | Fedora | 39+ | ✅ Full | Uses `dnf` backend |
 | Debian | 12+ | ⚠️ Partial | May need manual repo setup |
-| Windows 10 | 22H2+ | ✅ Full | HIP SDK 6.x |
-| Windows 11 | Any | ✅ Full | HIP SDK 6.x |
+| Windows 10 | 22H2+ | ✅ Full | HIP SDK 7.x |
+| Windows 11 | Any | ✅ Full | HIP SDK 7.x |
 | macOS | Any | ❌ No | AMD ROCm not supported on macOS |
 
 ---
@@ -387,17 +387,24 @@ Gillsystems-update-ai-engine-software/
 ├── src/                     # Python source modules
 │   ├── linux/               # Linux-specific sub-agents
 │   └── windows/             # Windows-specific sub-agents
-├── config/
-│   └── default_config.yaml  # Default configuration
 ├── tests/                   # Pytest test suite
 │   └── mocks/               # Mock helpers for integration tests
+├── executables/             # Node-specific and editable server launchers
+├── config/
+│   └── default_config.yaml  # Default configuration
 ├── conductor/               # 7D Conductor project tracking
 │   └── tracks/T-001-agent-core/
-├── executables/             # Dedicated Tier 2 server-only example launchers
+├── documentation/           # Investigation notes and run analyses
+├── Gillsystems_logo_stuff/  # Branding and donation assets
+├── logs/                    # Runtime logs written by launchers/bootstrap
+├── state/                   # Last-run and resume state artifacts
+├── bootstrap-linux.sh       # Linux bootstrap / venv / sudo warm-up
+├── bootstrap.ps1            # Windows bootstrap / dependency install
+├── CHANGELOG.md             # Release history
+├── Gillsystems-update-ai-engine-software.code-workspace
+├── UserGuide.md             # Extended user-facing documentation
 ├── update-ai-stack.bat      # Windows launcher (UAC elevation)
 ├── update-ai-stack.sh       # Linux launcher (sudo elevation)
-├── Gillsystems_example_server_edit_per_node.bat  # Shared Windows server template
-├── Gillsystems_example_server_edit_per_node.sh   # Shared Linux server template
 ├── requirements.txt         # Runtime dependencies
 ├── pyproject.toml           # Project metadata + packaging
 └── README.md                # This file
