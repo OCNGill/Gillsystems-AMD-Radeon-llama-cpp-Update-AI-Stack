@@ -488,6 +488,29 @@ def _has_c_runtime_headers() -> bool:
         return False
 
 
+def _has_linux_api_headers() -> bool:
+    """Return True when the active C compiler can resolve Linux UAPI headers.
+
+    SteamOS package corruption can leave `/usr/include/linux` incomplete even
+    after libc headers are repaired. Probe the kernel-facing headers directly so
+    preflight catches missing linux-api-headers before Ninja starts compiling.
+    """
+    compiler = _find_first_available_command(("cc", "gcc", "clang"))
+    if not compiler:
+        return True
+
+    try:
+        return subprocess.run(
+            [compiler, "-E", "-x", "c", "-"],
+            input="#include <linux/errno.h>\n#include <linux/limits.h>\n#include <linux/types.h>\n",
+            text=True,
+            capture_output=True,
+            timeout=10,
+        ).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
 def _detect_missing_linux_requirements(*, use_hip: bool) -> list[str]:
     missing: list[str] = []
     c_compiler = _find_first_available_command(("cc", "gcc", "clang"))
@@ -503,6 +526,8 @@ def _detect_missing_linux_requirements(*, use_hip: bool) -> list[str]:
         missing.append("C++ compiler")
     if c_compiler and not _has_c_runtime_headers():
         missing.append("C runtime headers")
+    if c_compiler and not _has_linux_api_headers():
+        missing.append("Linux API headers")
     if not shutil.which("ninja") and not shutil.which("make"):
         missing.append("build tool")
 
@@ -521,7 +546,7 @@ def _detect_missing_linux_requirements(*, use_hip: bool) -> list[str]:
 
 def _build_linux_dependency_install_plan(distro: str, *, use_hip: bool) -> tuple[str, list[list[str]], bool] | None:
     if _is_debian_based(distro) and shutil.which("apt-get"):
-        packages = ["build-essential", "cmake", "git", "ninja-build"]
+        packages = ["build-essential", "linux-libc-dev", "cmake", "git", "ninja-build"]
         if not use_hip:
             packages.extend(["libvulkan-dev", "glslc", "spirv-headers"])
         return (
@@ -534,7 +559,7 @@ def _build_linux_dependency_install_plan(distro: str, *, use_hip: bool) -> tuple
         )
 
     if _is_arch_based(distro) and shutil.which("pacman"):
-        packages = ["base-devel", "cmake", "git", "ninja"]
+        packages = ["base-devel", "linux-api-headers", "cmake", "git", "ninja"]
         if not use_hip:
             packages.extend(["shaderc", "spirv-headers", "vulkan-headers", "vulkan-icd-loader"])
         return (
@@ -545,7 +570,7 @@ def _build_linux_dependency_install_plan(distro: str, *, use_hip: bool) -> tuple
 
     dnf_binary = _find_first_available_command(("dnf5", "dnf", "yum"))
     if _is_fedora_based(distro) and dnf_binary:
-        packages = ["cmake", "git", "gcc-c++", "make", "ninja-build"]
+        packages = ["cmake", "git", "gcc-c++", "kernel-headers", "make", "ninja-build"]
         if not use_hip:
             packages.extend(["vulkan-loader-devel", "shaderc", "spirv-headers-devel"])
         return (
@@ -564,6 +589,7 @@ def _build_arch_repair_package_list(missing_requirements: list[str]) -> list[str
         "C compiler": ["base-devel"],
         "C++ compiler": ["base-devel"],
         "C runtime headers": ["glibc"],
+        "Linux API headers": ["linux-api-headers"],
         "build tool": ["ninja"],
         "glslc": ["shaderc"],
         "Vulkan headers": ["vulkan-headers"],
@@ -665,7 +691,7 @@ def _install_linux_build_prerequisites(
     formatted_missing = _format_missing_linux_requirements(missing_requirements)
 
     if not plan:
-        base_hint = "cmake, git, a C/C++ toolchain, and either ninja or make"
+        base_hint = "cmake, git, a C/C++ toolchain, Linux API headers, and either ninja or make"
         vulkan_hint = f"{base_hint}, plus glslc, Vulkan headers, and SPIRV-Headers"
         raise RuntimeError(
             "Could not determine how to install missing Linux build prerequisites "
