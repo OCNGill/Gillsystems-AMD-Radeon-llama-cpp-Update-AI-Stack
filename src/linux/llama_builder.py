@@ -530,6 +530,26 @@ def _build_linux_dependency_install_plan(distro: str, *, use_hip: bool) -> tuple
     return None
 
 
+def _build_arch_repair_package_list(missing_requirements: list[str]) -> list[str]:
+    package_map = {
+        "cmake": ["cmake"],
+        "git": ["git"],
+        "C compiler": ["base-devel"],
+        "C++ compiler": ["base-devel"],
+        "build tool": ["ninja"],
+        "glslc": ["shaderc"],
+        "Vulkan headers": ["vulkan-headers"],
+        "Vulkan loader": ["vulkan-icd-loader"],
+        "SPIRV-Headers": ["spirv-headers"],
+    }
+
+    repair_packages: list[str] = []
+    for requirement in missing_requirements:
+        repair_packages.extend(package_map.get(requirement, []))
+
+    return _dedupe_preserve_order(repair_packages)
+
+
 _PACMAN_KEYRING_DIR = Path("/etc/pacman.d/gnupg")
 _PACMAN_DATABASE_DIR = Path("/var/lib/pacman")
 _PACMAN_CACHE_DIR = Path("/var/cache/pacman/pkg")
@@ -674,6 +694,17 @@ def _install_linux_build_prerequisites(
             _ensure_steamos_pacman_keyring()
         for command in commands:
             _run_privileged(command, env=env)
+
+        if package_manager == "pacman":
+            remaining_requirements = _detect_missing_linux_requirements(use_hip=use_hip)
+            repair_packages = _build_arch_repair_package_list(remaining_requirements)
+            if repair_packages:
+                print_warning(
+                    "pacman reports required Arch packages as installed, but some files are still "
+                    f"missing ({_format_missing_linux_requirements(remaining_requirements)}). "
+                    f"Forcing targeted reinstall: {' '.join(repair_packages)}"
+                )
+                _run_privileged(["pacman", "-S", "--noconfirm", *repair_packages], env=env)
     finally:
         if steamos and not launcher_pre_unlocked:
             try:
