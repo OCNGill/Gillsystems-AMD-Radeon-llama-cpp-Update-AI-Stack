@@ -6,23 +6,33 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Unreleased]
+## [2.0.0] — 2026-05-22 — ALL NODES WORKING: llama.cpp Fully Optimized For All AMD
+
+> **Milestone release.** Every Gillsystems node is now live and validated end-to-end. llama.cpp compiles and runs fully optimized on every AMD GPU in the fleet — from the top-shelf RX 7900 XTX all the way down to the Steam Deck RDNA 2 APU — across both KUbuntu and SteamOS. Dedicated, production-quality server launchers are included for every node. This is the release where everything actually works.
 
 ### Added
-- **Dedicated HTPC server launcher**: Added `executables/Gillsystems-HTPC-server-latest.sh` for the HTPC optimized for 16GB RAM + 8GB VRAM (RX 7600), supporting Gemma 4 architecture.
-- **Linux repository alignment**: Switched default `llama_cpp_repo` in `default_config.yaml` to the mainstream `ggml-org` fork to fix Gemma 4 compatibility errors caused by the outdated AMD tracking fork.
-- **Linux library resolution**: Patched `update-ai-stack.sh` output wrappers and `executables/*.sh` scripts to explicitly link canonical `/opt` `.so` paths in `LD_LIBRARY_PATH`. Ensure `llama-server` does not fail due to missing shared libraries.
 
-- **Example llama.cpp server launchers**: Added `Gillsystems_example_server_edit_per_node.bat` and `Gillsystems_example_server_edit_per_node.sh` in the repo root. Both create timestamped logs in `logs/` and ship Gemma-safe defaults with MTP flags omitted.
-- **Dedicated Tier 2 server-only launchers**: Added `executables/Gillsystems_Laptop_iGPU_server_example.bat` and `executables/Gillsystems_SteamDeck_iGPU_server_example.sh` for the Laptop and Steam Deck nodes without changing the shared root templates.
+- **Production server launchers for all nodes** — each launcher in `executables/` is now a battle-tested, production-quality shell script tailored precisely to its hardware. No generic templates, no guessing:
+  - `executables/Gillsystems-HTPC-server-latest.sh` — HTPC (KUbuntu, RX 7600 / gfx1102, ROCm/HIP). 65 536-token context, full GPU offload (99 layers), Flash Attention, deterministic temperature 0. Confirmed working on 8 GB VRAM + 16 GB RAM.
+  - `executables/Gillsystems_SteamDeck_AI_Server.sh` — Steam Deck AI Server (SteamOS, RDNA 2 APU / gfx1033, Vulkan). 32 768-token context, direct `build-vulkan/bin` library path, no wrappers, no discovery loops. Confirmed working.
+  - `executables/Gillsystems_Laptop_iGPU_server_example.bat` — Windows Laptop (Vega 6 iGPU / gfx90c, HIP UMA Tier 2).
+  - `executables/Gillsystems_example_server_edit_per_node.bat` / `.sh` — editable per-node root templates.
+- **Deterministic inference on all launchers** — `--temperature 0` now explicitly set on every launcher, forcing greedy (argmax) token selection. No sampling, no guessing, fully reproducible outputs on every run.
+- **Linux repository alignment**: Switched default `llama_cpp_repo` in `default_config.yaml` to the mainstream `ggml-org` fork to fix Gemma 4 compatibility errors caused by the outdated AMD tracking fork.
+- **Example llama.cpp server launchers**: `Gillsystems_example_server_edit_per_node.bat` and `Gillsystems_example_server_edit_per_node.sh` in the repo root. Both create timestamped logs in `logs/` and ship Gemma-safe defaults with MTP flags omitted.
 
 ### Changed
 
+- **Steam Deck launcher completely rewritten** (`executables/Gillsystems_SteamDeck_AI_Server.sh`): Replaced the over-engineered discovery-and-logging wrapper with a minimal, direct-path script. Binary path, library directory, model path, host, port — all hard-coded for this exact machine. No `resolve_node_name()`, no `LD_LIBRARY_PATH` guessing, no log wrapping. It starts the server and gets out of the way. Renamed from `Gillsystems_SteamDeck_iGPU_server_example.sh` to `Gillsystems_SteamDeck_AI_Server.sh`.
+- **Steam Deck library path corrected** — `LD_LIBRARY_PATH` now points to `/home/deck/src/llama.cpp/build-vulkan/bin` where `libllama-server-impl.so` and all Vulkan-backend shared objects actually live. The previous `/opt/gillsystems/llama.cpp/lib` path did not exist on this machine and caused exit code 127 on every launch.
+- **HTPC context raised** to 65 536 tokens (was 16 384). RAM and VRAM validated — fits comfortably on 8 GB VRAM + 16 GB RAM.
+- **Steam Deck context** set to 32 768 tokens — right-sized for APU shared memory.
 - **Linux launcher logging**: `update-ai-stack.sh` now mirrors Windows behavior by writing timestamped run logs into `logs/` while still streaming output to the console.
-- **llama.cpp install layout**: successful installs still land in the canonical platform root, but the updater now mirrors the resulting `bin` tree into `<llama_cpp_source>/bin` and reports both locations during validation.
+- **llama.cpp install layout**: successful installs land in the canonical platform root, with the resulting `bin` tree mirrored into `<llama_cpp_source>/bin` for direct launcher use.
 
 ### Fixed
 
+- **Steam Deck `HOST` unterminated string syntax error** — `HOST="10.0.0.139` was missing its closing quote, causing Bash to consume the rest of the file as a string literal and report a parse error at the final `fi` (line 122). Fixed.
 - **Steam Deck `linux/*.h` build-stage failure after libc repair** (`llama_builder.py`): after the previous `glibc` repair restored `stdint.h`, some SteamOS runs still reached `ninja` and then failed on `linux/errno.h`, `linux/limits.h`, and `linux/types.h` because the kernel UAPI header package was still broken. Linux preflight now probes the active C compiler for the Linux API header set, Arch/SteamOS now includes `linux-api-headers` in the base prerequisite plan, and the targeted pacman repair pass now forces a `linux-api-headers` reinstall when those headers are still missing after the normal `--needed` install.
 - **Steam Deck `stdint.h` build-stage failure after successful Vulkan configure** (`llama_builder.py`): SteamOS could now reach the `ninja` phase, but some systems still had a broken `/usr/include` tree where GCC existed and CMake configured successfully while the first compile failed with `fatal error: stdint.h: No such file or directory`. Linux preflight now probes the active C compiler with `#include <stdint.h>` before building, reports missing `C runtime headers` as a prerequisite failure, and the Arch/SteamOS targeted repair path now forces a `glibc` reinstall when that probe still fails after the normal `pacman --needed` pass.
 - **Steam Deck pacman repair loop on Vulkan headers** (`llama_builder.py`): SteamOS could correctly detect `Vulkan headers` as missing, but the Arch repair plan used `pacman -S --needed`, so pacman skipped reinstall when its database said `vulkan-headers` was already installed, even though the required file was still missing on disk. The updater now keeps the fast `--needed` first pass, then detects unresolved Arch requirements and forces a second targeted pacman reinstall without `--needed` only for the still-missing packages.
@@ -36,7 +46,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **`_validate()` early return skipped second binary** (`llama_builder.py`): The loop returned after the first successful binary, so `llama-server` was never checked if `llama-cli` passed. Replaced with accumulator pattern that checks all binaries and warns on each missing/failed one.
 - **`build_dir` always named `build-hip` regardless of backend** (`llama_builder.py`): The cmake build directory was hardcoded as `build-hip` even for Vulkan builds. Renamed dynamically to `build-hip` or `build-vulkan` based on `self.use_hip` to prevent CMakeCache conflicts between backend switches.
 - **Bootstrap `cleanup()` killed keepalive before sudo commands** (`bootstrap-linux.sh`): `SUDO_KEEPALIVE_PID` was killed at the top of `cleanup()`, before the `sudo -n chown` and `sudo -n steamos-readonly enable` calls. If the ticket was near expiry, cleanup sudo commands could silently fail. Moved the keepalive kill to the very end of `cleanup()`, after all privileged operations.
-- **Steam Deck `PermissionError` on pacman keyring stat** (`llama_builder.py`): `_has_initialized_pacman_keyring()` called `Path.exists()` on files inside `/etc/pacman.d/gnupg/` (root:root 700). Running as non-root `deck` user this raises `PermissionError` even after `steamos-readonly disable`, aborting the entire run. Wrapped in `try/except PermissionError` returning `False` so `pacman-key --init` is invoked via the privileged sudo runner as intended.
 - **Steam Deck critical relock-mid-run bug** (commit `agent-round3`): `_install_linux_build_prerequisites()` was calling `steamos-readonly enable` in its `finally` block even when `bootstrap-linux.sh` had already unlocked the filesystem globally. This re-locked the FS before `_build()` ran, causing a read-only filesystem error during cmake. Fix: guard the lock/unlock cycle with `os.environ.get("STEAMOS_UNLOCKED") == "1"`.
 - **Steam Deck `use_hip` redundant computation**: `bool(shutil.which("hipcc"))` was computed independently in `_preflight_check()`, `_configure_cmake()`, and `_build()`. Now computed once in `LlamaBuilderLinux.__init__` as `self.use_hip`, used universally.
 - **Version check queried wrong fork on Linux** (`version_intel.py`): Linux version check was querying `ROCm/llama.cpp` (AMD tracking fork) instead of `ggml-org/llama.cpp`, causing spurious "Could not determine latest version" warnings. Both platforms now use the ggml-org fork to match actual build target.

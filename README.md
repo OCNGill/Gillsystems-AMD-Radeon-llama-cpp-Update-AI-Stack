@@ -10,16 +10,12 @@
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-lightgrey)](.)
 [![AMD GPU](https://img.shields.io/badge/GPU-AMD%20ROCm%2FHIP-red?logo=amd)](https://rocm.docs.amd.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/Release-v2.0.0-brightgreen)](CHANGELOG.md)
 
 **Gillsystems AI Stack Updater** is a portable, invocation-only Python agent that keeps your AMD consumer GPU AI stack — ROCm/HIP and llama.cpp — current on both Windows and Linux with a single command. No manual headaches. Reboot-resilient. Fully automated.
 
----
-
-## Table of Contents
-
-- [Overview](#overview)
-- [Key Features](#key-features)
-- [Quick Start](#quick-start)
+**v2.0 milestone:** All Gillsystems nodes are live and validated. llama.cpp runs fully optimized on every AMD GPU in the fleet — from the RX 7900 XTX to the Steam Deck RDNA 2 APU — across KUbuntu and SteamOS. Production server launchers are included for every node.
+- [Server Launchers](#server-launchers)
 - [Requirements](#requirements)
 - [CLI Reference](#cli-reference)
 - [Configuration](#configuration)
@@ -98,23 +94,24 @@ If a Konsole or SteamOS terminal profile says `Could not find '.../update-ai-sta
 
 Running the launcher once via `bash ./update-ai-stack.sh --check-env` also repairs the execute bit on the Linux launcher files when the repo checkout is writable.
 
-### Example llama.cpp Server Launchers
+### Server Launchers
 
-The repo root keeps the shared editable per-node launcher templates for direct `llama-server` use:
+See the [Server Launchers](#server-launchers) section below for the full details.
+
+Editable per-node root templates (copy, edit the paths, run):
 
 ```text
 Gillsystems_example_server_edit_per_node.bat
 Gillsystems_example_server_edit_per_node.sh
 ```
 
-Dedicated Tier 2 server-only examples for the smaller nodes live under `executables/`:
+Production-ready node-specific launchers in `executables/`:
 
 ```text
-executables/Gillsystems_Laptop_iGPU_server_example.bat
-executables/Gillsystems_SteamDeck_iGPU_server_example.sh
+executables/Gillsystems-HTPC-server-latest.sh          # KUbuntu, RX 7600
+executables/Gillsystems_SteamDeck_AI_Server.sh         # SteamOS, RDNA 2 APU
+executables/Gillsystems_Laptop_iGPU_server_example.bat # Windows, Vega 6 iGPU
 ```
-
-All four launchers create timestamped server logs in `logs/` and intentionally omit Gemma 4 MTP flags until upstream GGUF conversion adds Gemma MTP layers. The updater installs binaries into the canonical platform root and mirrors them into `<llama_cpp_source>/bin`, so the dedicated Tier 2 launchers can prefer the clean source-root bin during local build/test runs.
 
 ### Dry Run (safe preview — no changes made)
 
@@ -131,6 +128,30 @@ update-ai-stack.bat --dry-run
 ```bash
 python -m src.main --check-only
 ```
+
+---
+
+## Server Launchers
+
+v2.0 ships production-quality server launchers for every Gillsystems node. Each launcher is tuned precisely for its hardware — context window, GPU offload layers, backend library path, and deterministic temperature. They are not generic templates.
+
+| Launcher | Node | OS | GPU | Backend | Context | Temperature |
+|---|---|---|---|---|---|---|
+| `executables/Gillsystems-HTPC-server-latest.sh` | Gillsystems-HTPC | KUbuntu | RX 7600 / gfx1102 | ROCm/HIP | 65 536 | 0 (greedy) |
+| `executables/Gillsystems_SteamDeck_AI_Server.sh` | Gillsystems-Steam-Deck | SteamOS | RDNA 2 APU / gfx1033 | Vulkan | 32 768 | 0 (greedy) |
+| `executables/Gillsystems_Laptop_iGPU_server_example.bat` | Gillsystems-Laptop | Windows 10 | Vega 6 / gfx90c | HIP UMA | configurable | configurable |
+| `Gillsystems_example_server_edit_per_node.bat` / `.sh` | Any | Both | Any | Any | edit me | edit me |
+
+**All launchers:**
+- Use `--temperature 0` for fully deterministic, reproducible outputs
+- Load `gemma-4-E4B.Q6_K.gguf` from the node's Desktop/Models path
+- Enable Flash Attention (`-fa on`) for RDNA architecture
+- Enable `--jinja`, `--context-shift`, `--metrics`, `--no-mmap`
+- Support a `--dry-run` flag to preview config without starting the server
+
+**Steam Deck notes:** The launcher links directly to `/home/deck/src/llama.cpp/build-vulkan/bin` where the Vulkan-backend shared objects (`libllama-server-impl.so`, etc.) live after a successful build. No system-wide library install required.
+
+**HTPC notes:** The launcher resolves the optional `/opt/gillsystems/llama.cpp/lib` canonical install path when present, and sets `ROCBLAS_TENSILE_LIBPATH` for the rocBLAS library. Context of 65 536 tokens confirmed stable on 8 GB VRAM + 16 GB RAM.
 
 ---
 

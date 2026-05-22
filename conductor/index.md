@@ -15,5 +15,5 @@ An autonomous, reboot-resilient agent system that keeps ROCm/HIP and llama.cpp a
 - `conductor/setup_state.json`
 
 ## Status
-**Phase:** Debug / Deliver — Active (T-001 hardening complete; Windows 11 UTF-8, stderr isolation, HIP SDK 7.x fixes)
-**Last Updated:** 2026-05-06
+**Phase:** Deploy — v2.0.0 Released (ALL NODES WORKING: llama.cpp Fully Optimized For All AMD)
+**Last Updated:** 2026-05-22

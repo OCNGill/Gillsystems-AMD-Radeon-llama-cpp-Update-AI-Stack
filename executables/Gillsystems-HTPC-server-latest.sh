@@ -39,11 +39,12 @@ resolve_node_name() {
 MODEL_PATH="/home/gillsystems-htpc/Desktop/Models/gemma-4-E4B.Q6_K.gguf"
 HOST="10.0.0.42"
 PORT="8011"
-# 16384 (16k) context fits comfortably in 8GB VRAM alongside the ~5GB model.
-CTX_SIZE="16384" 
+# 65536 context requested; prior RAM validation on this node was acceptable.
+CTX_SIZE="65536"
 GPU_LAYERS="99"  # Offloads all layers
 PARALLEL_REQUESTS="1"
 FLASH_ATTN="on"
+TEMPERATURE="0"
 LOG_DIR="$SCRIPT_DIR/../logs"
 
 # Use the custom `go` binary if available, or fallback to standard ones
@@ -113,6 +114,7 @@ set +e
   --host "$HOST" \
   --jinja \
   --context-shift \
+    --temperature "$TEMPERATURE" \
   --metrics \
   --no-mmap 2>&1 | tee -a "$LOG_FILE"
 EXIT_CODE=${PIPESTATUS[0]}

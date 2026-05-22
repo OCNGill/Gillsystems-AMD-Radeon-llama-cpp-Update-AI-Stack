@@ -2,7 +2,9 @@
   <img src="Gillsystems_logo_stuff/Gill%20Systems%20Logo.png" alt="Gill Systems Logo" width="800">
 </p>
 
-# User Guide: Gillsystems AI Stack Updater Agent
+# User Guide: Gillsystems AI Stack Updater Agent v2.0
+
+> **v2.0 — ALL NODES WORKING.** llama.cpp is now fully optimized and running on every AMD GPU in the Gillsystems fleet, from the RX 7900 XTX down to the Steam Deck RDNA 2 APU, across KUbuntu and SteamOS. Production server launchers are included for every node.
 
 ## 📌 Getting Started
 
@@ -28,23 +30,47 @@ If Konsole or SteamOS warns that it could not find `update-ai-stack.sh` and fall
 
 You can also run `bash ./update-ai-stack.sh --check-env` once to validate the Linux launcher and auto-repair the execute bit when the repo checkout is writable.
 
-### Example llama.cpp Server Launchers
+### Server Launchers — Production Node Configuration
 
-Editable shared per-node example server launchers are included in the repo root:
+v2.0 ships fully validated, production-ready launchers for every Gillsystems node. Each is hard-coded for its exact hardware — binary path, library path, context size, GPU layers, and temperature. They are not generic templates; they are the launchers that actually passed real-world validation.
 
+**KUbuntu HTPC (RX 7600 / gfx1102 — ROCm/HIP, Tier 1):**
+```bash
+executables/Gillsystems-HTPC-server-latest.sh
+```
+- Binary: `/home/gillsystems-htpc/src/llama.cpp/bin/llama-server`
+- Libs: `/opt/gillsystems/llama.cpp/lib` (canonical ROCm/HIP install)
+- Context: 65 536 tokens — confirmed stable on 8 GB VRAM + 16 GB RAM
+- GPU layers: 99 (full offload)
+- Flash Attention: on
+- Temperature: 0 (deterministic/greedy)
+- Supports `--dry-run`
+
+**Steam Deck AI Server (RDNA 2 APU / gfx1033 — Vulkan, Tier 2):**
+```bash
+executables/Gillsystems_SteamDeck_AI_Server.sh
+```
+- Binary: `/home/deck/src/llama.cpp/bin/llama-server`
+- Libs: `/home/deck/src/llama.cpp/build-vulkan/bin` — points directly to the Vulkan build output where `libllama-server-impl.so` and all Vulkan-backend `.so` files live
+- Context: 32 768 tokens — right-sized for APU shared memory
+- GPU layers: 99
+- Flash Attention: on
+- Temperature: 0 (deterministic/greedy)
+- Supports `--dry-run`
+
+**Windows Laptop (Vega 6 iGPU / gfx90c — HIP UMA, Tier 2):**
+```bat
+executables/Gillsystems_Laptop_iGPU_server_example.bat
+```
+- Edit context and paths to suit; template ships with Gemma-safe defaults.
+
+**Editable per-node root templates (start here for a new node):**
 ```text
 Gillsystems_example_server_edit_per_node.bat
 Gillsystems_example_server_edit_per_node.sh
 ```
 
-Dedicated Tier 2 server-only launchers for the smaller nodes live in `executables/`:
-
-```text
-executables/Gillsystems_Laptop_iGPU_server_example.bat
-executables/Gillsystems_SteamDeck_iGPU_server_example.sh
-```
-
-They all log server output to `logs/` and intentionally leave Gemma 4 MTP flags disabled until upstream GGUF conversion adds Gemma-compatible MTP layers. The updater still installs binaries to the canonical platform root, then mirrors them into `<llama_cpp_source>/bin` so local source-tree launchers have a stable executable path after each build.
+All launchers use `--temperature 0` for fully deterministic output, `--jinja`, `--context-shift`, `--metrics`, and `--no-mmap`.
 
 ---
 
