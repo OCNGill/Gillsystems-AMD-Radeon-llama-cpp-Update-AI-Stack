@@ -140,7 +140,8 @@ def test_preflight_installs_steamos_vulkan_prereqs_when_missing(tmp_path: Path) 
 
     with patch("src.linux.llama_builder.shutil.which", side_effect=fake_which), \
          patch("src.linux.llama_builder._detect_distro", return_value="steamos arch"), \
-            patch("src.linux.llama_builder._has_vulkan_loader", side_effect=lambda: state["installed"]), \
+         patch("src.linux.llama_builder._has_c_runtime_headers", side_effect=lambda: state["installed"]), \
+         patch("src.linux.llama_builder._has_vulkan_loader", side_effect=lambda: state["installed"]), \
          patch("src.linux.llama_builder._has_vulkan_headers", side_effect=lambda: state["installed"]), \
          patch("src.linux.llama_builder._has_spirv_headers", side_effect=lambda: state["installed"]), \
          patch("src.linux.llama_builder._PACMAN_KEYRING_DIR", new=Path("/nonexistent/__gpg__")), \
@@ -187,6 +188,7 @@ def test_detect_missing_linux_requirements_reports_vulkan_loader_when_missing() 
         }.get(tool)
 
     with patch("src.linux.llama_builder.shutil.which", side_effect=fake_which), \
+         patch("src.linux.llama_builder._has_c_runtime_headers", return_value=True), \
          patch("src.linux.llama_builder._has_vulkan_loader", return_value=False), \
          patch("src.linux.llama_builder._has_vulkan_headers", return_value=True), \
          patch("src.linux.llama_builder._has_spirv_headers", return_value=True):
@@ -207,12 +209,34 @@ def test_detect_missing_linux_requirements_reports_vulkan_headers_when_missing()
         }.get(tool)
 
     with patch("src.linux.llama_builder.shutil.which", side_effect=fake_which), \
+         patch("src.linux.llama_builder._has_c_runtime_headers", return_value=True), \
          patch("src.linux.llama_builder._has_vulkan_loader", return_value=True), \
          patch("src.linux.llama_builder._has_vulkan_headers", return_value=False), \
          patch("src.linux.llama_builder._has_spirv_headers", return_value=True):
         missing = linux_llama_builder._detect_missing_linux_requirements(use_hip=False)
 
     assert missing == ["Vulkan headers"]
+
+
+def test_detect_missing_linux_requirements_reports_c_runtime_headers_when_missing() -> None:
+    def fake_which(tool: str) -> str | None:
+        return {
+            "cmake": "/usr/bin/cmake",
+            "git": "/usr/bin/git",
+            "cc": "/usr/bin/cc",
+            "c++": "/usr/bin/c++",
+            "ninja": "/usr/bin/ninja",
+            "glslc": "/usr/bin/glslc",
+        }.get(tool)
+
+    with patch("src.linux.llama_builder.shutil.which", side_effect=fake_which), \
+         patch("src.linux.llama_builder._has_c_runtime_headers", return_value=False), \
+         patch("src.linux.llama_builder._has_vulkan_loader", return_value=True), \
+         patch("src.linux.llama_builder._has_vulkan_headers", return_value=True), \
+         patch("src.linux.llama_builder._has_spirv_headers", return_value=True):
+        missing = linux_llama_builder._detect_missing_linux_requirements(use_hip=False)
+
+    assert missing == ["C runtime headers"]
 
 
 def test_arch_vulkan_install_plan_includes_icd_loader() -> None:
@@ -236,6 +260,12 @@ def test_arch_repair_package_list_maps_missing_requirements_to_packages() -> Non
     ])
 
     assert packages == ["vulkan-headers", "vulkan-icd-loader", "spirv-headers", "shaderc"]
+
+
+def test_arch_repair_package_list_maps_c_runtime_headers_to_glibc() -> None:
+    packages = linux_llama_builder._build_arch_repair_package_list(["C runtime headers"])
+
+    assert packages == ["glibc"]
 
 
 def test_has_vulkan_headers_ignores_pkg_config_loader_signal() -> None:
@@ -282,6 +312,7 @@ def test_preflight_forces_targeted_reinstall_when_pacman_needed_skips_missing_he
 
     with patch("src.linux.llama_builder.shutil.which", side_effect=fake_which), \
          patch("src.linux.llama_builder._detect_distro", return_value="steamos arch"), \
+         patch("src.linux.llama_builder._has_c_runtime_headers", return_value=True), \
          patch("src.linux.llama_builder._has_vulkan_loader", return_value=True), \
          patch("src.linux.llama_builder._has_vulkan_headers", side_effect=lambda: state["header_fixed"]), \
          patch("src.linux.llama_builder._has_spirv_headers", return_value=True), \
@@ -292,6 +323,49 @@ def test_preflight_forces_targeted_reinstall_when_pacman_needed_skips_missing_he
 
     assert ["pacman", "-S", "--needed", "--noconfirm", "base-devel", "cmake", "git", "ninja", "shaderc", "spirv-headers", "vulkan-headers", "vulkan-icd-loader"] in privileged_calls
     assert ["pacman", "-S", "--noconfirm", "vulkan-headers"] in privileged_calls
+    assert builder._use_ninja is True
+
+
+def test_preflight_forces_targeted_reinstall_when_c_runtime_headers_are_missing(tmp_path: Path) -> None:
+    cfg = _make_cfg(tmp_path)
+    builder = LlamaBuilderLinux(cfg, ["gfx1033"])
+
+    privileged_calls: list[list[str]] = []
+    state = {"libc_fixed": False}
+
+    def fake_which(tool: str) -> str | None:
+        installed_tools = {
+            "cmake": "/usr/bin/cmake",
+            "git": "/usr/bin/git",
+            "cc": "/usr/bin/cc",
+            "c++": "/usr/bin/c++",
+            "make": "/usr/bin/make",
+            "ninja": "/usr/bin/ninja",
+            "glslc": "/usr/bin/glslc",
+            "pacman": "/usr/bin/pacman",
+        }
+        if tool == "hipcc":
+            return None
+        return installed_tools.get(tool)
+
+    def fake_run_privileged(cmd: list[str], timeout: int = 3600, env: dict | None = None) -> None:
+        privileged_calls.append(cmd)
+        if cmd[:4] == ["pacman", "-S", "--noconfirm", "glibc"]:
+            state["libc_fixed"] = True
+
+    with patch("src.linux.llama_builder.shutil.which", side_effect=fake_which), \
+         patch("src.linux.llama_builder._detect_distro", return_value="steamos arch"), \
+         patch("src.linux.llama_builder._has_c_runtime_headers", side_effect=lambda: state["libc_fixed"]), \
+         patch("src.linux.llama_builder._has_vulkan_loader", return_value=True), \
+         patch("src.linux.llama_builder._has_vulkan_headers", return_value=True), \
+         patch("src.linux.llama_builder._has_spirv_headers", return_value=True), \
+         patch("src.linux.llama_builder._PACMAN_KEYRING_DIR", new=Path("/nonexistent/__gpg__")), \
+         patch("src.linux.llama_builder._detect_available_pacman_keyrings", return_value=["archlinux", "holo"]), \
+         patch("src.linux.llama_builder._run_privileged", side_effect=fake_run_privileged):
+        builder._preflight_check()
+
+    assert ["pacman", "-S", "--needed", "--noconfirm", "base-devel", "cmake", "git", "ninja", "shaderc", "spirv-headers", "vulkan-headers", "vulkan-icd-loader"] in privileged_calls
+    assert ["pacman", "-S", "--noconfirm", "glibc"] in privileged_calls
     assert builder._use_ninja is True
 
 
@@ -310,9 +384,10 @@ def test_preflight_dry_run_reports_steamos_install_plan(tmp_path: Path) -> None:
 
     with patch("src.linux.llama_builder.shutil.which", side_effect=fake_which), \
          patch("src.linux.llama_builder._detect_distro", return_value="steamos arch"), \
-                patch("src.linux.llama_builder._has_vulkan_loader", return_value=False), \
-            patch("src.linux.llama_builder._PACMAN_KEYRING_DIR", new=Path("/nonexistent/__gpg__")), \
-            patch("src.linux.llama_builder._detect_available_pacman_keyrings", return_value=["archlinux", "holo"]), \
+         patch("src.linux.llama_builder._has_c_runtime_headers", return_value=False), \
+         patch("src.linux.llama_builder._has_vulkan_loader", return_value=False), \
+         patch("src.linux.llama_builder._PACMAN_KEYRING_DIR", new=Path("/nonexistent/__gpg__")), \
+         patch("src.linux.llama_builder._detect_available_pacman_keyrings", return_value=["archlinux", "holo"]), \
          patch("src.linux.llama_builder._has_vulkan_headers", return_value=False), \
          patch("src.linux.llama_builder._has_spirv_headers", return_value=False), \
          patch("src.linux.llama_builder.print_dry_run", side_effect=dry_run_messages.append):
@@ -352,11 +427,12 @@ def test_steamos_readonly_lock_restored_after_pacman_failure(tmp_path: Path) -> 
 
     with patch("src.linux.llama_builder.shutil.which", side_effect=fake_which), \
          patch("src.linux.llama_builder._detect_distro", return_value="steamos arch"), \
-            patch("src.linux.llama_builder._has_vulkan_loader", return_value=False), \
+         patch("src.linux.llama_builder._has_c_runtime_headers", return_value=False), \
+         patch("src.linux.llama_builder._has_vulkan_loader", return_value=False), \
          patch("src.linux.llama_builder._has_vulkan_headers", return_value=False), \
          patch("src.linux.llama_builder._has_spirv_headers", return_value=False), \
          patch("src.linux.llama_builder._PACMAN_KEYRING_DIR", new=Path("/nonexistent/__gpg__")), \
-            patch("src.linux.llama_builder._detect_available_pacman_keyrings", return_value=["archlinux"]), \
+         patch("src.linux.llama_builder._detect_available_pacman_keyrings", return_value=["archlinux"]), \
          patch("src.linux.llama_builder._run_privileged", side_effect=fake_run_privileged):
         with pytest.raises(RuntimeError, match="pacman failed"):
             builder._preflight_check()
@@ -394,7 +470,8 @@ def test_steamos_populates_available_keyrings_when_already_present(tmp_path: Pat
 
     with patch("src.linux.llama_builder.shutil.which", side_effect=fake_which), \
          patch("src.linux.llama_builder._detect_distro", return_value="steamos arch"), \
-            patch("src.linux.llama_builder._has_vulkan_loader", side_effect=lambda: state["installed"]), \
+         patch("src.linux.llama_builder._has_c_runtime_headers", side_effect=lambda: state["installed"]), \
+         patch("src.linux.llama_builder._has_vulkan_loader", side_effect=lambda: state["installed"]), \
          patch("src.linux.llama_builder._has_vulkan_headers", side_effect=lambda: state["installed"]), \
          patch("src.linux.llama_builder._has_spirv_headers", side_effect=lambda: state["installed"]), \
          patch("src.linux.llama_builder._PACMAN_KEYRING_DIR", new=fake_gnupg), \

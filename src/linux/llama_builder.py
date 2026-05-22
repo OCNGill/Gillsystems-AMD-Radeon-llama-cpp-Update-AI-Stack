@@ -465,17 +465,44 @@ def _has_spirv_headers() -> bool:
     return any(path.exists() for path in _SPIRV_HEADER_CANDIDATES)
 
 
+def _has_c_runtime_headers() -> bool:
+    """Return True when the active C compiler can resolve libc headers.
+
+    SteamOS can report the compiler toolchain as installed while `/usr/include`
+    is partially missing. Probe the actual compiler with `stdint.h` so preflight
+    fails before Ninja reaches the first compile unit.
+    """
+    compiler = _find_first_available_command(("cc", "gcc", "clang"))
+    if not compiler:
+        return True
+
+    try:
+        return subprocess.run(
+            [compiler, "-E", "-x", "c", "-"],
+            input="#include <stdint.h>\n",
+            text=True,
+            capture_output=True,
+            timeout=10,
+        ).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
 def _detect_missing_linux_requirements(*, use_hip: bool) -> list[str]:
     missing: list[str] = []
+    c_compiler = _find_first_available_command(("cc", "gcc", "clang"))
+    cxx_compiler = _find_first_available_command(("c++", "g++", "clang++"))
 
     if not shutil.which("cmake"):
         missing.append("cmake")
     if not shutil.which("git"):
         missing.append("git")
-    if not _find_first_available_command(("cc", "gcc", "clang")):
+    if not c_compiler:
         missing.append("C compiler")
-    if not _find_first_available_command(("c++", "g++", "clang++")):
+    if not cxx_compiler:
         missing.append("C++ compiler")
+    if c_compiler and not _has_c_runtime_headers():
+        missing.append("C runtime headers")
     if not shutil.which("ninja") and not shutil.which("make"):
         missing.append("build tool")
 
@@ -536,6 +563,7 @@ def _build_arch_repair_package_list(missing_requirements: list[str]) -> list[str
         "git": ["git"],
         "C compiler": ["base-devel"],
         "C++ compiler": ["base-devel"],
+        "C runtime headers": ["glibc"],
         "build tool": ["ninja"],
         "glslc": ["shaderc"],
         "Vulkan headers": ["vulkan-headers"],
