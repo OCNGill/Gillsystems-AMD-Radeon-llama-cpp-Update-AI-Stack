@@ -227,6 +227,17 @@ def test_arch_vulkan_install_plan_includes_icd_loader() -> None:
     assert "vulkan-icd-loader" in commands[0]
 
 
+def test_arch_repair_package_list_maps_missing_requirements_to_packages() -> None:
+    packages = linux_llama_builder._build_arch_repair_package_list([
+        "Vulkan headers",
+        "Vulkan loader",
+        "SPIRV-Headers",
+        "glslc",
+    ])
+
+    assert packages == ["vulkan-headers", "vulkan-icd-loader", "spirv-headers", "shaderc"]
+
+
 def test_has_vulkan_headers_ignores_pkg_config_loader_signal() -> None:
     def fake_which(tool: str) -> str | None:
         return "/usr/bin/pkg-config" if tool in {"pkg-config", "pkgconf"} else None
@@ -240,6 +251,48 @@ def test_has_vulkan_headers_ignores_pkg_config_loader_signal() -> None:
         assert linux_llama_builder._has_vulkan_headers() is False
 
     mock_run.assert_not_called()
+
+
+def test_preflight_forces_targeted_reinstall_when_pacman_needed_skips_missing_headers(tmp_path: Path) -> None:
+    cfg = _make_cfg(tmp_path)
+    builder = LlamaBuilderLinux(cfg, ["gfx1033"])
+
+    privileged_calls: list[list[str]] = []
+    state = {"header_fixed": False}
+
+    def fake_which(tool: str) -> str | None:
+        installed_tools = {
+            "cmake": "/usr/bin/cmake",
+            "git": "/usr/bin/git",
+            "cc": "/usr/bin/cc",
+            "c++": "/usr/bin/c++",
+            "make": "/usr/bin/make",
+            "ninja": "/usr/bin/ninja",
+            "glslc": "/usr/bin/glslc",
+            "pacman": "/usr/bin/pacman",
+        }
+        if tool == "hipcc":
+            return None
+        return installed_tools.get(tool)
+
+    def fake_run_privileged(cmd: list[str], timeout: int = 3600, env: dict | None = None) -> None:
+        privileged_calls.append(cmd)
+        if cmd[:4] == ["pacman", "-S", "--noconfirm", "vulkan-headers"]:
+            state["header_fixed"] = True
+
+    with patch("src.linux.llama_builder.shutil.which", side_effect=fake_which), \
+         patch("src.linux.llama_builder._detect_distro", return_value="steamos arch"), \
+         patch("src.linux.llama_builder._has_vulkan_loader", return_value=True), \
+         patch("src.linux.llama_builder._has_vulkan_headers", side_effect=lambda: state["header_fixed"]), \
+         patch("src.linux.llama_builder._has_spirv_headers", return_value=True), \
+         patch("src.linux.llama_builder._PACMAN_KEYRING_DIR", new=Path("/nonexistent/__gpg__")), \
+         patch("src.linux.llama_builder._detect_available_pacman_keyrings", return_value=["archlinux", "holo"]), \
+         patch("src.linux.llama_builder._run_privileged", side_effect=fake_run_privileged):
+        builder._preflight_check()
+
+    assert ["pacman", "-S", "--needed", "--noconfirm", "base-devel", "cmake", "git", "ninja", "shaderc", "spirv-headers", "vulkan-headers", "vulkan-icd-loader"] in privileged_calls
+    assert ["pacman", "-S", "--noconfirm", "vulkan-headers"] in privileged_calls
+    assert builder._use_ninja is True
 
 
 def test_preflight_dry_run_reports_steamos_install_plan(tmp_path: Path) -> None:
