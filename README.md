@@ -98,19 +98,14 @@ Running the launcher once via `bash ./update-ai-stack.sh --check-env` also repai
 
 See the [Server Launchers](#server-launchers) section below for the full details.
 
-Editable per-node root templates (copy, edit the paths, run):
-
-```text
-Gillsystems_example_server_edit_per_node.bat
-Gillsystems_example_server_edit_per_node.sh
-```
-
-Production-ready node-specific launchers in `executables/`:
+All shipped server executables now live in `executables/`. That includes both the production node launchers and the editable per-node templates:
 
 ```text
 executables/server_desktop_rocm_linux_latest.sh          # KUbuntu, RX 7600
 executables/server_deck_vulkan_linux.sh         # SteamOS, RDNA 2 APU
 executables/server_mobile_uma_windows_example.bat # Windows, Vega 6 iGPU
+executables/Gillsystems_example_server_edit_per_node.bat
+executables/Gillsystems_example_server_edit_per_node.sh
 ```
 
 ### Dry Run (safe preview — no changes made)
@@ -133,14 +128,14 @@ python -m src.main --check-only
 
 ## Server Launchers
 
-v2.0 ships production-quality server launchers for every Gillsystems node. Each launcher is tuned precisely for its hardware — context window, GPU offload layers, backend library path, and deterministic temperature. They are not generic templates.
+v2.0 ships server executables in `executables/` for every Gillsystems node, plus editable per-node templates for new deployments. The node-specific launchers are tuned precisely for their hardware — context window, GPU offload layers, backend library path, and deterministic temperature — and are not just samples.
 
 | Launcher | Node | OS | GPU | Backend | Context | Temperature |
 |---|---|---|---|---|---|---|
 | `executables/server_desktop_rocm_linux_latest.sh` | desktop-node | KUbuntu | RX 7600 / gfx1102 | ROCm/HIP | 65 536 | 0 (greedy) |
 | `executables/server_deck_vulkan_linux.sh` | deck-node | SteamOS | RDNA 2 APU / gfx1033 | Vulkan | 32 768 | 0 (greedy) |
 | `executables/server_mobile_uma_windows_example.bat` | mobile-node | Windows 10 | Vega 6 / gfx90c | HIP UMA | configurable | configurable |
-| `Gillsystems_example_server_edit_per_node.bat` / `.sh` | Any | Both | Any | Any | edit me | edit me |
+| `executables/Gillsystems_example_server_edit_per_node.bat` / `.sh` | Any | Both | Any | Any | edit me | edit me |
 
 **All launchers:**
 - Use `--temperature 0` for fully deterministic, reproducible outputs
@@ -393,11 +388,9 @@ Gillsystems-update-ai-engine-software/
 │   └── mocks/               # Mock helpers for integration tests
 ├── conductor/               # 7D Conductor project tracking
 │   └── tracks/T-001-agent-core/
-├── executables/             # Dedicated Tier 2 server-only example launchers
+├── executables/             # Shipped server launchers and editable templates
 ├── update-ai-stack.bat      # Windows launcher (UAC elevation)
 ├── update-ai-stack.sh       # Linux launcher (sudo elevation)
-├── Gillsystems_example_server_edit_per_node.bat  # Shared Windows server template
-├── Gillsystems_example_server_edit_per_node.sh   # Shared Linux server template
 ├── requirements.txt         # Runtime dependencies
 ├── pyproject.toml           # Project metadata + packaging
 └── README.md                # This file
