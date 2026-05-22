@@ -25,11 +25,11 @@
 ## Linux First-Run Bootstrap
 - **`bootstrap-linux.sh`** — Repo-local Bash bootstrap called by `update-ai-stack.sh`; auto-locates Python 3.11+, creates the project venv, warms `sudo` once per live run, keeps the credential alive for the session, logs full output to `logs/`, and prints explicit Konsole/SteamOS launcher warnings when the execute bit or profile path is wrong
 
-## Example Server Launchers
-- **`Gillsystems_example_server_edit_per_node.bat`** — Windows `llama-server.exe` example launcher with timestamped `logs/` output, portable rocBLAS Tensile path wiring, and Gemma-safe defaults (no MTP flags)
-- **`Gillsystems_example_server_edit_per_node.sh`** — Linux `llama-server` example launcher with timestamped `logs/` output and Gemma-safe defaults (no MTP flags)
-- **`executables/Gillsystems_Laptop_iGPU_server_example.bat`** — Dedicated Windows Tier 2 server-only launcher for the Laptop/Vega 6 node with path fallbacks for mirrored source-root, active build tree, and canonical install roots
-- **`executables/Gillsystems_SteamDeck_iGPU_server_example.sh`** — Dedicated Linux Tier 2 server-only launcher for the Steam Deck node with path fallbacks for mirrored source-root, active build tree, and canonical install roots
+## Server Launchers
+- **`executables/Gillsystems_server_edit_per_node.bat`** — Windows `llama-server.exe` editable launcher with timestamped `logs/` output, portable rocBLAS Tensile path wiring, and Gemma-safe defaults (no MTP flags)
+- **`executables/Gillsystems_server_edit_per_node.sh`** — Linux `llama-server` editable launcher with timestamped `logs/` output and Gemma-safe defaults (no MTP flags)
+- **`executables/Gillsystems_Laptop_iGPU_server.bat`** — Dedicated Windows Tier 2 server-only launcher for the Laptop/Vega 6 node with path fallbacks for mirrored source-root, active build tree, and canonical install roots
+- **`executables/Gillsystems_SteamDeck_AI_Server.sh`** — Dedicated Linux Tier 2 server-only launcher for the Steam Deck node with path fallbacks for mirrored source-root, active build tree, and canonical install roots
 
 ## OS Targets
 - **Linux:** Ubuntu 22.04 / 24.04 (primary), Fedora (secondary), SteamOS / Arch (Steam Deck)

@@ -44,7 +44,7 @@
 _Completed 2026-05-22_
 - [x] HTPC launcher: raised context to 65 536, added explicit `--temperature 0`, LD_LIBRARY_PATH + ROCBLAS_TENSILE_LIBPATH wiring validated
 - [x] Steam Deck launcher: completely rewritten to minimal direct-path form; fixed unterminated HOST string syntax error; corrected library path to `build-vulkan/bin`; context set to 32 768; `--temperature 0` for deterministic inference
-- [x] Renamed `Gillsystems_SteamDeck_iGPU_server_example.sh` → `Gillsystems_SteamDeck_AI_Server.sh`
+- [x] Renamed the legacy Steam Deck iGPU launcher to `Gillsystems_SteamDeck_AI_Server.sh`
 - [x] Validated both launchers with `bash -n`, `--dry-run`, and live binary load (`llama-server --version`) 
 - [x] Updated CHANGELOG.md, README.md, UserGuide.md, conductor files for v2.0 release
 - [x] Committed and tagged v2.0.0

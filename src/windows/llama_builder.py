@@ -51,11 +51,18 @@ class LlamaBuilderWindows:
     def __init__(self, cfg: GillsystemsAIStackUpdaterConfig, gpu_targets: List[str]) -> None:
         self.cfg = cfg
         self.gpu_targets = gpu_targets
-        self.source_dir = Path(cfg.paths.llama_cpp_source).expanduser()
-        self.install_dir = Path(cfg.paths.llama_cpp_install_windows)
-        self.build_dir = self.source_dir / "build-hip-win"
+        self.source_dir = cfg.paths.resolve_llama_cpp_source()
+        self.install_dir = cfg.paths.resolve_llama_cpp_install_windows()
+        self.use_hip = False
+        self.build_dir = self.source_dir / "build-vulkan-win"
         self._vcvars: Optional[Path] = None
         self._use_ninja: bool = False
+        self._refresh_backend_selection()
+
+    def _refresh_backend_selection(self) -> None:
+        self.use_hip = bool(shutil.which("hipcc"))
+        backend = "hip" if self.use_hip else "vulkan"
+        self.build_dir = self.source_dir / f"build-{backend}-win"
 
     def build_and_install(self) -> None:
         """Full clone → configure → build → install cycle."""
@@ -72,6 +79,8 @@ class LlamaBuilderWindows:
 
     def _preflight_check(self) -> None:
         """Ensure cmake, git, and HIP SDK are available."""
+        self._refresh_backend_selection()
+
         for tool in ("cmake", "git"):
             if not shutil.which(tool):
                 raise RuntimeError(
@@ -79,7 +88,7 @@ class LlamaBuilderWindows:
                 )
 
         tier = get_compute_tier(self.gpu_targets)
-        if not shutil.which("hipcc"):
+        if not self.use_hip:
             if tier == 1:
                 raise RuntimeError(
                     "hipcc not found. Tier 1 hardware REQUIRES the AMD HIP SDK. "
@@ -147,10 +156,11 @@ class LlamaBuilderWindows:
 
     def _configure_cmake(self) -> None:
         targets_str = ";".join(self.gpu_targets)
+        self._refresh_backend_selection()
 
         # Find HIP_PATH from environment or default location
         hip_path = os.environ.get("HIP_PATH") or _find_hip_path()
-        use_hip = bool(shutil.which("hipcc"))
+        use_hip = self.use_hip
 
         cmake_args = [
             "cmake",

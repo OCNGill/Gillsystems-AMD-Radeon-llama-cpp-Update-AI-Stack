@@ -198,7 +198,7 @@ class TestWindowsRebootHandler:
         mock_run.assert_not_called()
 
     def test_register_task_live_calls_schtasks(self, live_cfg: GillsystemsAIStackUpdaterConfig):
-        from src.windows.reboot_handler import RebootHandler, _TASK_NAME
+        from src.windows.reboot_handler import RebootHandler
 
         handler = RebootHandler(live_cfg)
 
@@ -212,5 +212,5 @@ class TestWindowsRebootHandler:
         args = mock_run.call_args[0][0]
         assert "schtasks" in args
         assert "/create" in args
-        assert _TASK_NAME in args
+        assert handler.task_name in args
         assert "--resume" in " ".join(args)

@@ -46,8 +46,8 @@ class LlamaBuilderLinux:
     def __init__(self, cfg: GillsystemsAIStackUpdaterConfig, gpu_targets: List[str]) -> None:
         self.cfg = cfg
         self.gpu_targets = gpu_targets
-        self.source_dir = Path(cfg.paths.llama_cpp_source).expanduser()
-        self.install_dir = Path(cfg.paths.llama_cpp_install_linux).expanduser()
+        self.source_dir = cfg.paths.resolve_llama_cpp_source()
+        self.install_dir = cfg.paths.resolve_llama_cpp_install_linux()
         # Computed once at construction; all methods use self.use_hip for consistency.
         self.use_hip = bool(shutil.which("hipcc"))
         # Name the build directory by the actual backend so HIP and Vulkan builds

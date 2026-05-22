@@ -13,10 +13,11 @@ from pathlib import Path
 
 from src.cli import print_dry_run, print_info, print_step, print_success, print_warning
 from src.config import GillsystemsAIStackUpdaterConfig
+from src.runtime import get_node_id
 
 logger = logging.getLogger(__name__)
 
-_TASK_NAME = "GillsystemsAIStackUpdaterResumeTask"
+_TASK_NAME_PREFIX = "GillsystemsAIStackUpdaterResumeTask"
 
 
 class RebootHandler:
@@ -25,6 +26,8 @@ class RebootHandler:
     def __init__(self, cfg: GillsystemsAIStackUpdaterConfig) -> None:
         self.cfg = cfg
         self.launcher_path = self._find_launcher()
+        self.node_id = get_node_id()
+        self.task_name = f"{_TASK_NAME_PREFIX}-{self.node_id}"
 
     def _find_launcher(self) -> Path:
         """Locate update-ai-stack.bat relative to this module."""
@@ -39,7 +42,7 @@ class RebootHandler:
         """Create a one-shot logon Scheduled Task for resume."""
         if self.cfg.behavior.dry_run:
             print_dry_run(
-                f"Would create Scheduled Task '{_TASK_NAME}' to run:\n"
+                f"Would create Scheduled Task '{self.task_name}' to run:\n"
                 f"  {self.launcher_path} --resume"
             )
             return
@@ -51,18 +54,18 @@ class RebootHandler:
         # /RU "" = run as current user
         cmd = [
             "schtasks", "/create",
-            "/tn", _TASK_NAME,
+            "/tn", self.task_name,
             "/tr", f'"{self.launcher_path}" --resume',
             "/sc", "ONLOGON",
             "/rl", "HIGHEST",
             "/f",          # force overwrite if exists
         ]
 
-        print_step(f"Registering Scheduled Task: {_TASK_NAME}")
+        print_step(f"Registering Scheduled Task: {self.task_name}")
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=30)
             logger.debug("schtasks output: %s", result.stdout)
-            print_success(f"Scheduled Task '{_TASK_NAME}' created successfully.")
+            print_success(f"Scheduled Task '{self.task_name}' created successfully.")
         except subprocess.CalledProcessError as exc:
             raise RuntimeError(
                 f"Failed to create Scheduled Task: {exc.stderr or exc.stdout}"
@@ -71,14 +74,14 @@ class RebootHandler:
     def unregister_resume_task(self) -> None:
         """Delete the Scheduled Task after a successful resume."""
         if self.cfg.behavior.dry_run:
-            print_dry_run(f"Would delete Scheduled Task '{_TASK_NAME}'")
+            print_dry_run(f"Would delete Scheduled Task '{self.task_name}'")
             return
 
-        print_step(f"Removing Scheduled Task: {_TASK_NAME}")
-        cmd = ["schtasks", "/delete", "/tn", _TASK_NAME, "/f"]
+        print_step(f"Removing Scheduled Task: {self.task_name}")
+        cmd = ["schtasks", "/delete", "/tn", self.task_name, "/f"]
         try:
             subprocess.run(cmd, capture_output=True, check=False, timeout=30)
-            print_success(f"Scheduled Task '{_TASK_NAME}' removed.")
+            print_success(f"Scheduled Task '{self.task_name}' removed.")
         except Exception as exc:
             print_warning(f"Could not remove Scheduled Task: {exc}")
 

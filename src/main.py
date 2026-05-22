@@ -28,6 +28,7 @@ from src.cli import (
 from src.config import load_config, GillsystemsAIStackUpdaterConfig
 from src.gpu_detect import GPUDetector, get_compute_tier
 from src.privilege import ensure_admin, is_admin
+from src.runtime import get_runtime_identity
 from src.state_manager import StateManager, StepStatus
 from src.version_intel import VersionIntel, UpdateManifest
 
@@ -68,8 +69,9 @@ class Orchestrator:
         self.resume = resume
         self.skip_rocm = skip_rocm
         self.skip_llama = skip_llama
+        self.runtime = get_runtime_identity()
 
-        state_dir = Path(cfg.paths.state_dir)
+        state_dir = cfg.paths.resolve_state_dir()
         self.state = StateManager(state_dir)
         self.intel = VersionIntel(bleeding_edge=cfg.repo.bleeding_edge)
         self.gpu = GPUDetector()
@@ -317,12 +319,8 @@ class Orchestrator:
             else:
                 print_step(f"  {name}: not available (optional)")
 
-        install_bin = (
-            Path(self.cfg.paths.llama_cpp_install_windows) / "bin"
-            if sys.platform == "win32"
-            else Path(self.cfg.paths.llama_cpp_install_linux) / "bin"
-        )
-        source_bin = Path(self.cfg.paths.llama_cpp_source).expanduser() / "bin"
+        install_bin = self.cfg.paths.resolve_llama_cpp_install_current() / "bin"
+        source_bin = self.cfg.paths.resolve_llama_cpp_source() / "bin"
         print_info(f"llama.cpp binaries are installed at {install_bin}")
         if source_bin.exists() and source_bin.resolve(strict=False) != install_bin.resolve(strict=False):
             print_info(f"Source-root launcher bin is available at {source_bin}")
@@ -493,6 +491,11 @@ def main() -> None:
     logging.getLogger("httpcore").setLevel(logging.WARNING)
 
     print_banner(dry_run=cfg.behavior.dry_run)
+    runtime = get_runtime_identity()
+    print_info(
+        "Runtime target: "
+        f"platform={runtime['platform']} distro={runtime['distro']} node={runtime['node']}"
+    )
 
     # Privilege check (skip in dry-run mode — not needed)
     if not cfg.behavior.dry_run:

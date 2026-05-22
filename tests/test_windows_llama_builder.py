@@ -97,6 +97,20 @@ def test_configure_cmake_enables_vulkan_with_sdk_cmake_prefix(tmp_path: Path) ->
     assert "-DGGML_HIP=ON" not in captured[0]
 
 
+def test_backend_selection_uses_separate_build_dirs_for_hip_and_vulkan(tmp_path: Path) -> None:
+    cfg = _make_cfg(tmp_path)
+    builder = LlamaBuilderWindows(cfg, ["gfx1033"])
+
+    with patch("src.windows.llama_builder.shutil.which", return_value=None):
+        builder._refresh_backend_selection()
+        assert builder.build_dir == Path(cfg.paths.llama_cpp_source) / "build-vulkan-win"
+
+    hip_root = tmp_path / "rocm"
+    with patch("src.windows.llama_builder.shutil.which", side_effect=_fake_which(hip_root)):
+        builder._refresh_backend_selection()
+        assert builder.build_dir == Path(cfg.paths.llama_cpp_source) / "build-hip-win"
+
+
 def test_configure_cmake_raises_when_vulkan_sdk_cmake_prefix_missing(tmp_path: Path) -> None:
     cfg = _make_cfg(tmp_path)
     builder = LlamaBuilderWindows(cfg, ["gfx1033"])

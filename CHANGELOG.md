@@ -15,15 +15,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Production server launchers for all nodes** — each launcher in `executables/` is now a battle-tested, production-quality shell script tailored precisely to its hardware. No generic templates, no guessing:
   - `executables/Gillsystems-HTPC-server-latest.sh` — HTPC (KUbuntu, RX 7600 / gfx1102, ROCm/HIP). 65 536-token context, full GPU offload (99 layers), Flash Attention, deterministic temperature 0. Confirmed working on 8 GB VRAM + 16 GB RAM.
   - `executables/Gillsystems_SteamDeck_AI_Server.sh` — Steam Deck AI Server (SteamOS, RDNA 2 APU / gfx1033, Vulkan). 32 768-token context, direct `build-vulkan/bin` library path, no wrappers, no discovery loops. Confirmed working.
-  - `executables/Gillsystems_Laptop_iGPU_server_example.bat` — Windows Laptop (Vega 6 iGPU / gfx90c, HIP UMA Tier 2).
-  - `executables/Gillsystems_example_server_edit_per_node.bat` / `.sh` — editable per-node root templates.
+  - `executables/Gillsystems_Laptop_iGPU_server.bat` — Windows Laptop (Vega 6 iGPU / gfx90c, HIP UMA Tier 2).
+  - `executables/Gillsystems_server_edit_per_node.bat` / `.sh` — editable per-node launcher templates.
 - **Deterministic inference on all launchers** — `--temperature 0` now explicitly set on every launcher, forcing greedy (argmax) token selection. No sampling, no guessing, fully reproducible outputs on every run.
 - **Linux repository alignment**: Switched default `llama_cpp_repo` in `default_config.yaml` to the mainstream `ggml-org` fork to fix Gemma 4 compatibility errors caused by the outdated AMD tracking fork.
-- **Example llama.cpp server launchers**: `Gillsystems_example_server_edit_per_node.bat` and `Gillsystems_example_server_edit_per_node.sh` in the repo root. Both create timestamped logs in `logs/` and ship Gemma-safe defaults with MTP flags omitted.
+- **Editable llama.cpp server launchers**: `executables/Gillsystems_server_edit_per_node.bat` and `executables/Gillsystems_server_edit_per_node.sh` create timestamped logs in `logs/` and ship Gemma-safe defaults with MTP flags omitted.
 
 ### Changed
 
-- **Steam Deck launcher completely rewritten** (`executables/Gillsystems_SteamDeck_AI_Server.sh`): Replaced the over-engineered discovery-and-logging wrapper with a minimal, direct-path script. Binary path, library directory, model path, host, port — all hard-coded for this exact machine. No `resolve_node_name()`, no `LD_LIBRARY_PATH` guessing, no log wrapping. It starts the server and gets out of the way. Renamed from `Gillsystems_SteamDeck_iGPU_server_example.sh` to `Gillsystems_SteamDeck_AI_Server.sh`.
+- **Steam Deck launcher completely rewritten** (`executables/Gillsystems_SteamDeck_AI_Server.sh`): Replaced the over-engineered discovery-and-logging wrapper with a minimal, direct-path script. Binary path, library directory, model path, host, port — all hard-coded for this exact machine. No `resolve_node_name()`, no `LD_LIBRARY_PATH` guessing, no log wrapping. It starts the server and gets out of the way. Renamed from the legacy Steam Deck iGPU launcher to `Gillsystems_SteamDeck_AI_Server.sh`.
 - **Steam Deck library path corrected** — `LD_LIBRARY_PATH` now points to `/home/deck/src/llama.cpp/build-vulkan/bin` where `libllama-server-impl.so` and all Vulkan-backend shared objects actually live. The previous `/opt/gillsystems/llama.cpp/lib` path did not exist on this machine and caused exit code 127 on every launch.
 - **HTPC context raised** to 65 536 tokens (was 16 384). RAM and VRAM validated — fits comfortably on 8 GB VRAM + 16 GB RAM.
 - **Steam Deck context** set to 32 768 tokens — right-sized for APU shared memory.

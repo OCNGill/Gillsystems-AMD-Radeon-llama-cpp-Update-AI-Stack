@@ -60,14 +60,14 @@ executables/Gillsystems_SteamDeck_AI_Server.sh
 
 **Windows Laptop (Vega 6 iGPU / gfx90c — HIP UMA, Tier 2):**
 ```bat
-executables/Gillsystems_Laptop_iGPU_server_example.bat
+executables/Gillsystems_Laptop_iGPU_server.bat
 ```
 - Edit context and paths to suit; template ships with Gemma-safe defaults.
 
-**Editable per-node root templates (start here for a new node):**
+**Editable per-node templates in `executables/` (start here for a new node):**
 ```text
-Gillsystems_example_server_edit_per_node.bat
-Gillsystems_example_server_edit_per_node.sh
+executables/Gillsystems_server_edit_per_node.bat
+executables/Gillsystems_server_edit_per_node.sh
 ```
 
 All launchers use `--temperature 0` for fully deterministic output, `--jinja`, `--context-shift`, `--metrics`, and `--no-mmap`.

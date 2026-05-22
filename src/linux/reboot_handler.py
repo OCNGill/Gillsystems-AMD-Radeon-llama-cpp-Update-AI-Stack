@@ -20,11 +20,11 @@ except ModuleNotFoundError:  # pragma: no cover - Windows test host only
 from src.cli import print_dry_run, print_info, print_step, print_success, print_warning
 from src.config import GillsystemsAIStackUpdaterConfig
 from src.privilege import get_linux_sudo_prefix
+from src.runtime import get_node_id
 
 logger = logging.getLogger(__name__)
 
-_SERVICE_NAME = "gillsystems-ai-stack-updater-resume.service"
-_SERVICE_PATH = Path(f"/etc/systemd/system/{_SERVICE_NAME}")
+_SERVICE_NAME_PREFIX = "gillsystems-ai-stack-updater-resume"
 
 _SERVICE_TEMPLATE = """\
 [Unit]
@@ -36,6 +36,7 @@ ConditionPathExists={launcher}
 Type=oneshot
 WorkingDirectory={working_dir}
 Environment="HOME={owner_home}"
+Environment="GILLSYSTEMS_NODE_NAME={node_id}"
 Environment="GILLSYSTEMS_REPO_OWNER={owner}"
 Environment="GILLSYSTEMS_REPO_OWNER_HOME={owner_home}"
 ExecStart=/bin/bash {launcher} --resume
@@ -55,6 +56,9 @@ class RebootHandler:
     def __init__(self, cfg: GillsystemsAIStackUpdaterConfig) -> None:
         self.cfg = cfg
         self.launcher_path = self._find_launcher()
+        self.node_id = get_node_id()
+        self.service_name = f"{_SERVICE_NAME_PREFIX}-{self.node_id}.service"
+        self.service_path = Path(f"/etc/systemd/system/{self.service_name}")
         self.repo_owner, self.repo_owner_home = self._resolve_owner_context()
 
     def _find_launcher(self) -> Path:
@@ -88,40 +92,41 @@ class RebootHandler:
     def register_resume_task(self) -> None:
         """Create the systemd one-shot service and enable it."""
         if self.cfg.behavior.dry_run:
-            print_dry_run(f"Would create systemd service: {_SERVICE_PATH}")
-            print_dry_run(f"Would enable: systemctl enable {_SERVICE_NAME}")
+            print_dry_run(f"Would create systemd service: {self.service_path}")
+            print_dry_run(f"Would enable: systemctl enable {self.service_name}")
             return
 
         service_content = _SERVICE_TEMPLATE.format(
             launcher=self.launcher_path,
             working_dir=self.launcher_path.parent,
+            node_id=self.node_id,
             owner=self.repo_owner,
             owner_home=self.repo_owner_home,
-            service_name=_SERVICE_NAME,
+            service_name=self.service_name,
         )
 
-        print_step(f"Writing systemd service: {_SERVICE_PATH}")
+        print_step(f"Writing systemd service: {self.service_path}")
         try:
-            _SERVICE_PATH.write_text(service_content, encoding="utf-8")
+            self.service_path.write_text(service_content, encoding="utf-8")
         except PermissionError:
             # Try via sudo tee
-            _write_via_sudo_tee(str(_SERVICE_PATH), service_content)
+            _write_via_sudo_tee(str(self.service_path), service_content)
 
         _run_privileged(["systemctl", "daemon-reload"])
-        _run_privileged(["systemctl", "enable", _SERVICE_NAME])
-        print_success(f"Systemd resume service registered: {_SERVICE_NAME}")
+        _run_privileged(["systemctl", "enable", self.service_name])
+        print_success(f"Systemd resume service registered: {self.service_name}")
 
     def unregister_resume_task(self) -> None:
         """Disable and remove the systemd service after successful resume."""
         if self.cfg.behavior.dry_run:
-            print_dry_run(f"Would disable and remove: {_SERVICE_NAME}")
+            print_dry_run(f"Would disable and remove: {self.service_name}")
             return
 
-        print_step(f"Removing resume service: {_SERVICE_NAME}")
+        print_step(f"Removing resume service: {self.service_name}")
         try:
-            _run_privileged(["systemctl", "disable", _SERVICE_NAME], check=False)
-            if _SERVICE_PATH.exists():
-                _SERVICE_PATH.unlink()
+            _run_privileged(["systemctl", "disable", self.service_name], check=False)
+            if self.service_path.exists():
+                self.service_path.unlink()
             _run_privileged(["systemctl", "daemon-reload"])
             print_success("Resume service removed.")
         except Exception as exc:

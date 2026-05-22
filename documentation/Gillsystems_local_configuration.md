@@ -159,9 +159,9 @@ Gillsystems-Steam-Deck  10.0.0.139   (SteamOS — Worker)
 
 ## Tier 2 Server Launcher References
 
-- **Shared templates:** `Gillsystems_example_server_edit_per_node.bat` and `Gillsystems_example_server_edit_per_node.sh` remain the generic per-node server launchers in the repo root.
-- **Gillsystems-Laptop:** `executables/Gillsystems_Laptop_iGPU_server_example.bat` is the dedicated Tier 2 server-only example for the Vega 6 node at `10.0.0.93`.
-- **Gillsystems-Steam-Deck:** `executables/Gillsystems_SteamDeck_iGPU_server_example.sh` is the dedicated Tier 2 server-only example for the Steam Deck node at `10.0.0.139`.
+- **Shared templates:** `executables/Gillsystems_server_edit_per_node.bat` and `executables/Gillsystems_server_edit_per_node.sh` are the editable per-node server launchers in `executables/`.
+- **Gillsystems-Laptop:** `executables/Gillsystems_Laptop_iGPU_server.bat` is the dedicated Tier 2 server-only launcher for the Vega 6 node at `10.0.0.93`.
+- **Gillsystems-Steam-Deck:** `executables/Gillsystems_SteamDeck_AI_Server.sh` is the dedicated Tier 2 server-only launcher for the Steam Deck node at `10.0.0.139`.
 - **Executable layout:** updater installs remain canonical at `C:\Gillsystems\llama.cpp\bin` on Windows and `/opt/gillsystems/llama.cpp/bin` on Linux, while successful runs also mirror those binaries into `<llama_cpp_source>/bin` for source-tree launch workflows.
 
 ---
