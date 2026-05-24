@@ -10,11 +10,13 @@ llama-server.exe ^
   -np 1 ^
   --port 8010 ^
   --host 10.0.0.164 ^
-  --chat-template chatml ^
-  --context-shift ^
   --temperature 0.20 ^
   --top-k 20 ^
   --min-p 0.05 ^
+  --reasoning-format none ^
+  -r "<|im_end|>" ^
+  -r "<|im_start|>" ^
+  --ui-config "{\"chatFormat\":\"auto\"}" ^
   --metrics ^
   --no-mmap
 
