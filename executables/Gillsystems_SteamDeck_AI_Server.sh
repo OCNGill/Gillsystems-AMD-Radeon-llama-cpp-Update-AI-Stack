@@ -8,6 +8,8 @@ LLAMA_LIB_DIR="/home/deck/src/llama.cpp/build-vulkan/bin"
 HOST="10.0.0.139"
 PORT="8013"
 CTX_SIZE="32768"
+BATCH_SIZE="2048"
+UBATCH_SIZE="512"
 GPU_LAYERS="99"
 PARALLEL_REQUESTS="1"
 FLASH_ATTN="on"
@@ -51,6 +53,8 @@ exec "$SERVER_EXE" \
   -ngl "$GPU_LAYERS" \
   -fa "$FLASH_ATTN" \
   -np "$PARALLEL_REQUESTS" \
+  -b "$BATCH_SIZE" \
+  -ub "$UBATCH_SIZE" \
   --port "$PORT" \
   --host "$HOST" \
   --jinja \
@@ -58,7 +62,6 @@ exec "$SERVER_EXE" \
   --temperature "$TEMPERATURE" \
   --top-k "$TOP_K" \
   --min-p "$MIN_P" \
-  --reasoning-format none \
   -r "<|im_end|>,<|im_start|>" \
   --metrics \
   --no-mmap
