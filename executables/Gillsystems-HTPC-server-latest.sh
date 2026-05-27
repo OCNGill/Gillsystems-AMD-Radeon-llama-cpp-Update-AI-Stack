@@ -109,9 +109,7 @@ set +e
   --top-k "$TOP_K" \
   --min-p "$MIN_P" \
   --reasoning-format none \
-  -r "<|im_end|>" \
-  -r "<|im_start|>" \
-  --ui-config '{"chatFormat":"auto"}' \
+  -r "<|im_end|>,<|im_start|>" \
   --metrics \
   --no-mmap 2>&1 | tee -a "$LOG_FILE"
 EXIT_CODE=${PIPESTATUS[0]}
