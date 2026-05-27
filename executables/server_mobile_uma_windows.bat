@@ -31,9 +31,7 @@ if not exist "%MODEL%" (
   --top-k 20 ^
   --min-p 0.05 ^
   --reasoning-format none ^
-  -r "<|im_end|>" ^
-  -r "<|im_start|>" ^
-  --ui-config "{\"chatFormat\":\"auto\"}" ^
+  -r "<|im_end|>,<|im_start|>" ^
   --metrics ^
   --no-mmap
 
