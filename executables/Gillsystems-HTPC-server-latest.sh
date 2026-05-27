@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================
-# Gillsystems HTPC Server Launcher (Linux / RX 7600)
-# Adapted with iGPU optimizations, tailored for 16GB RAM + 8GB VRAM.
+# Gillsystems HTPC Server Launcher (Linux / Dedicated RX 7600)
+# Base Model Profile - 128K Context Max VRAM - Zero iGPU
 # ============================================================
 
 set -euo pipefail
@@ -34,20 +34,18 @@ resolve_node_name() {
     printf '%s\n' "$candidate"
 }
 
-# Explicitly set the library path for local custom builds
-
 MODEL_PATH="/home/gillsystems-htpc/Desktop/Models/gemma-4-E4B.Q6_K.gguf"
 HOST="10.0.0.42"
 PORT="8011"
-# 65536 context requested; prior RAM validation on this node was acceptable.
-CTX_SIZE="65536"
-GPU_LAYERS="99"  # Offloads all layers
+CTX_SIZE="131072"
+GPU_LAYERS="99"  
 PARALLEL_REQUESTS="1"
 FLASH_ATTN="on"
-TEMPERATURE="0"
+TEMPERATURE="0.20"
+TOP_K="20"
+MIN_P="0.05"
 LOG_DIR="$SCRIPT_DIR/../logs"
 
-# Use the custom `go` binary if available, or fallback to standard ones
 SERVER_EXE=""
 for candidate in \
   "/home/gillsystems-htpc/src/llama.cpp/bin/llama-server" \
@@ -77,7 +75,7 @@ if [[ "${1:-}" == "--dry-run" ]]; then
 fi
 
 if [[ -z "$SERVER_EXE" ]]; then
-    echo "[Gillsystems] ERROR: llama-server executable (or 'go') was not found."
+    echo "[Gillsystems] ERROR: llama-server executable was not found."
     exit 1
 fi
 
@@ -86,18 +84,11 @@ if [[ ! -f "$MODEL_PATH" ]]; then
     exit 1
 fi
 
-# Link binary and library paths dynamically for canonical installs
 LLAMA_BIN_DIR="$(dirname "$SERVER_EXE")"
 LLAMA_LIB_DIR="/opt/gillsystems/llama.cpp/lib"
 
 if [[ -d "$LLAMA_LIB_DIR" ]]; then
     export LD_LIBRARY_PATH="$LLAMA_LIB_DIR:${LD_LIBRARY_PATH:-}"
-fi
-
-# Steam Deck/iGPU Optimization checks for tensile libraries
-TENSILE_LIBPATH="$LLAMA_BIN_DIR/rocblas/library"
-if [[ -d "$TENSILE_LIBPATH" ]]; then
-    export ROCBLAS_TENSILE_LIBPATH="$TENSILE_LIBPATH"
 fi
 
 echo "Executable: $SERVER_EXE"
@@ -114,7 +105,13 @@ set +e
   --host "$HOST" \
   --jinja \
   --context-shift \
-    --temperature "$TEMPERATURE" \
+  --temperature "$TEMPERATURE" \
+  --top-k "$TOP_K" \
+  --min-p "$MIN_P" \
+  --reasoning-format none \
+  -r "<|im_end|>" \
+  -r "<|im_start|>" \
+  --ui-config '{"chatFormat":"auto"}' \
   --metrics \
   --no-mmap 2>&1 | tee -a "$LOG_FILE"
 EXIT_CODE=${PIPESTATUS[0]}

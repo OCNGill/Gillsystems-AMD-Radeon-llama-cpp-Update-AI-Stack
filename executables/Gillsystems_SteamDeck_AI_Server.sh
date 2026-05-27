@@ -7,11 +7,13 @@ SERVER_EXE="/home/deck/src/llama.cpp/bin/llama-server"
 LLAMA_LIB_DIR="/home/deck/src/llama.cpp/build-vulkan/bin"
 HOST="10.0.0.139"
 PORT="8013"
-CTX_SIZE="32768"
+CTX_SIZE="131072"
 GPU_LAYERS="99"
 PARALLEL_REQUESTS="1"
 FLASH_ATTN="on"
-TEMPERATURE="0"
+TEMPERATURE="0.20"
+TOP_K="20"
+MIN_P="0.05"
 
 echo "Starting Steam Deck AI Server..."
 echo "Model:   $MODEL_PATH"
@@ -54,5 +56,11 @@ exec "$SERVER_EXE" \
   --jinja \
   --context-shift \
   --temperature "$TEMPERATURE" \
+  --top-k "$TOP_K" \
+  --min-p "$MIN_P" \
+  --reasoning-format none \
+  -r "<|im_end|>" \
+  -r "<|im_start|>" \
+  --ui-config '{"chatFormat":"auto"}' \
   --metrics \
   --no-mmap

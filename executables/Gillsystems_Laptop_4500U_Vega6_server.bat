@@ -20,7 +20,7 @@ if not exist "%MODEL%" (
 
 "%LLAMA_EXE%" ^
   -m "%MODEL%" ^
-  -c 32768 ^
+  -c 131072 ^
   -ngl 99 ^
   -fa on ^
   -np 1 ^
@@ -30,6 +30,10 @@ if not exist "%MODEL%" (
   --temperature 0.20 ^
   --top-k 20 ^
   --min-p 0.05 ^
+  --reasoning-format none ^
+  -r "<|im_end|>" ^
+  -r "<|im_start|>" ^
+  --ui-config "{\"chatFormat\":\"auto\"}" ^
   --metrics ^
   --no-mmap
 
