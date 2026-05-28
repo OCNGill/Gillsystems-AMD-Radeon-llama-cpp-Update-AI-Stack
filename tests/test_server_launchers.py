@@ -77,7 +77,7 @@ def test_production_launchers_use_deterministic_google_tuned_profile() -> None:
 
 def test_production_launchers_support_model_path_overrides() -> None:
     expected_markers = {
-        "executables/server_primary_hip_windows.bat": ("GILLSYSTEMS_PRIMARY_MODEL_PATH", "Working_Models"),
+        "executables/server_primary_hip_windows.bat": ("GILLSYSTEMS_PRIMARY_MODEL_PATH", 'C:\\Models\\%MODEL_FILENAME%', 'for /r "C:\\Models"'),
         "executables/server_desktop_rocm_linux.sh": ("GILLSYSTEMS_DESKTOP_MODEL_PATH",),
         "executables/server_mobile_uma_windows.bat": ("GILLSYSTEMS_MOBILE_MODEL_PATH",),
         "executables/server_deck_vulkan_linux.sh": ("GILLSYSTEMS_DECK_MODEL_PATH",),
@@ -97,3 +97,4 @@ def test_main_launcher_keeps_a_debug_window_open_and_stringifies_errors() -> Non
     assert "--gillsystems-primary-child-window" in launcher_text
     assert "ForEach-Object { $_.ToString() }" in launcher_text
     assert "UNHANDLED POWERSHELL ERROR" in launcher_text
+    assert 'if exist "%%~fP" set "MODEL_PATH=%%~fP"' in launcher_text
