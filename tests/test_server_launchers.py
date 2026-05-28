@@ -88,3 +88,12 @@ def test_production_launchers_support_model_path_overrides() -> None:
 
         for marker in markers:
             assert marker in launcher_text, f"{relative_path} missing {marker}"
+
+
+def test_main_launcher_keeps_a_debug_window_open_and_stringifies_errors() -> None:
+    launcher_text = _read_launcher("executables/Gillsystems_Main_AI_Server.bat")
+
+    assert "cmd.exe /k" in launcher_text
+    assert "--gillsystems-main-child-window" in launcher_text
+    assert "ForEach-Object { $_.ToString() }" in launcher_text
+    assert "UNHANDLED POWERSHELL ERROR" in launcher_text
