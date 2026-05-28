@@ -1,10 +1,10 @@
-<p align="center">
+﻿<p align="center">
   <img src="Gillsystems_logo_stuff/Gill%20Systems%20Logo.png" alt="Gill Systems Logo" width="800">
 </p>
 
-# User Guide: Gillsystems AI Stack Updater Agent v2.0
+# User Guide: Gillsystems AI Stack Updater Agent v2.1
 
-> **v2.0 — ALL NODES WORKING.** llama.cpp is now fully optimized and running on every AMD GPU in the Gillsystems fleet, from the RX 7900 XTX down to the Steam Deck RDNA 2 APU, across KUbuntu and SteamOS. Production server launchers are included for every node.
+> **v2.1 — ROUND 3 TUNING.** The fleet has migrated standard node deployments to the Google-Optimized sample profile (Temperature 1.0, Top K 64, Top P 0.95) and fully locked APU compute chunks via -b 2048 and -ub 512. We are now prepared for Instruction-Tuned (IT) model orchestration.
 
 ## 📌 Getting Started
 
@@ -36,14 +36,15 @@ v2.0 ships fully validated, production-ready launchers for every Gillsystems nod
 
 **KUbuntu HTPC (RX 7600 / gfx1102 — ROCm/HIP, Tier 1):**
 ```bash
-executables/Gillsystems-HTPC-server-latest.sh
+executables/Gillsystems-HTPC-AI-server.sh
 ```
 - Binary: `/home/gillsystems-htpc/src/llama.cpp/bin/llama-server`
 - Libs: `/opt/gillsystems/llama.cpp/lib` (canonical ROCm/HIP install)
 - Context: 65 536 tokens — confirmed stable on 8 GB VRAM + 16 GB RAM
 - GPU layers: 99 (full offload)
 - Flash Attention: on
-- Temperature: 0 (deterministic/greedy)
+- Sampling: Temperature 1.0, Top_K 64, Top_P 0.95
+- Batching: 2048 logical, 512 physical
 - Supports `--dry-run`
 
 **Steam Deck AI Server (RDNA 2 APU / gfx1033 — Vulkan, Tier 2):**
@@ -55,7 +56,8 @@ executables/Gillsystems_SteamDeck_AI_Server.sh
 - Context: 32 768 tokens — right-sized for APU shared memory
 - GPU layers: 99
 - Flash Attention: on
-- Temperature: 0 (deterministic/greedy)
+- Sampling: Temperature 1.0, Top_K 64, Top_P 0.95
+- Batching: 2048 logical, 512 physical
 - Supports `--dry-run`
 
 **Windows Laptop (Vega 6 iGPU / gfx90c — HIP UMA, Tier 2):**

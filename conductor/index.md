@@ -1,4 +1,4 @@
-# Gillsystems Update AI Engine Software — Conductor Index
+﻿# Gillsystems Update AI Engine Software — Conductor Index
 
 ## Project
 **Gillsystems AI Stack Updater Agent**
@@ -15,5 +15,5 @@ An autonomous, reboot-resilient agent system that keeps ROCm/HIP and llama.cpp a
 - `conductor/setup_state.json`
 
 ## Status
-**Phase:** Deploy — v2.0.0 Released (ALL NODES WORKING: llama.cpp Fully Optimized For All AMD)
-**Last Updated:** 2026-05-22
+**Phase:** Deploy — v2.1.0 Released (Round 3 Base Tuning Complete / Gearing for IT Variants)
+**Last Updated:** 2026-05-27
