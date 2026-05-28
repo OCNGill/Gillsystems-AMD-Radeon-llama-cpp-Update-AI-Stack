@@ -24,6 +24,11 @@ if not exist "%MODEL%" (
     exit /b 1
 )
 
+echo [Gillsystems] Terminating any existing llama-server.exe instances...
+taskkill /F /T /IM llama-server.exe >nul 2>&1
+echo [Gillsystems] Waiting for Windows to release VRAM allocations...
+timeout /t 3 /nobreak >nul
+
 "%LLAMA_EXE%" ^
   -m "%MODEL%" ^
   -c %CTX_SIZE% ^
@@ -38,6 +43,8 @@ if not exist "%MODEL%" (
   --temperature %TEMPERATURE% ^
   --top-k %TOP_K% ^
   --min-p %MIN_P% ^
+  --repeat-penalty 1.15 ^
+  --repeat-last-n 128 ^
   -r "<|im_end|>" ^
   -r "<|im_start|>" ^
   --metrics ^

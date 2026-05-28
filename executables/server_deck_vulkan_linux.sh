@@ -22,6 +22,8 @@ FLASH_ATTN="on"
 TEMPERATURE="0.20"
 TOP_K="20"
 MIN_P="0.05"
+REPEAT_PENALTY="1.15"
+REPEAT_LAST_N="128"
 
 echo "Starting Steam Deck AI Server..."
 echo "Model:   $MODEL_PATH"
@@ -53,6 +55,13 @@ fi
 
 export LD_LIBRARY_PATH="$LLAMA_LIB_DIR:${LD_LIBRARY_PATH:-}"
 
+echo "[Gillsystems] Terminating any existing llama-server instances..."
+pkill -f llama-server >/dev/null 2>&1 || true
+sleep 2
+pkill -9 -f llama-server >/dev/null 2>&1 || true
+echo "[Gillsystems] Waiting for Linux to release VRAM allocations..."
+sleep 2
+
 exec "$SERVER_EXE" \
   -m "$MODEL_PATH" \
   -c "$CTX_SIZE" \
@@ -68,6 +77,8 @@ exec "$SERVER_EXE" \
   --temperature "$TEMPERATURE" \
   --top-k "$TOP_K" \
   --min-p "$MIN_P" \
+    --repeat-penalty "$REPEAT_PENALTY" \
+    --repeat-last-n "$REPEAT_LAST_N" \
   -r "<|im_end|>" \
   -r "<|im_start|>" \
   --metrics \
