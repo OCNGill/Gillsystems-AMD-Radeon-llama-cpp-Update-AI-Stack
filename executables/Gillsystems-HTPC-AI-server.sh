@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================
 # Gillsystems HTPC Server Launcher (Linux / Dedicated RX 7600)
-# Base Model Profile - 128K Context Max VRAM - Zero iGPU
+# Round 3 Tuning Profile - 32K Context Stabilized Baseline
 # ============================================================
 
 set -euo pipefail
@@ -37,7 +37,7 @@ resolve_node_name() {
 MODEL_PATH="/home/gillsystems-htpc/Desktop/Models/gemma-4-E4B.Q6_K.gguf"
 HOST="10.0.0.42"
 PORT="8011"
-CTX_SIZE="131072"
+CTX_SIZE="32768"
 BATCH_SIZE="2048"
 UBATCH_SIZE="512"
 GPU_LAYERS="99"  
@@ -45,9 +45,9 @@ PARALLEL_REQUESTS="1"
 FLASH_ATTN="on"
 
 # Google Authoritative Model Card Sampling Stack
-TEMPERATURE="1.0"
-TOP_K="64"
-TOP_P="0.95"
+TEMPERATURE="0.20"
+TOP_K="20"
+MIN_P="0.05"
 
 LOG_DIR="$SCRIPT_DIR/../logs"
 
@@ -114,8 +114,9 @@ set +e
   --context-shift \
   --temperature "$TEMPERATURE" \
   --top-k "$TOP_K" \
-  --top-p "$TOP_P" \
-  -r "<|im_end|>,<|im_start|>" \
+  --min-p "$MIN_P" \
+  -r "<|im_end|>" \
+  -r "<|im_start|>" \
   --metrics \
   --no-mmap 2>&1 | tee -a "$LOG_FILE"
 EXIT_CODE=${PIPESTATUS[0]}

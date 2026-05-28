@@ -7,6 +7,11 @@ set "LLAMA_EXE=C:\llama.cpp\bin\llama-server.exe"
 set "MODEL=C:\Users\Gillsystems Laptop\Desktop\Models\gemma-4-E4B.Q6_K.gguf"
 set "CTX_SIZE=32768"
 
+:: Google Authoritative Model Card Sampling Stack
+set "TEMPERATURE=0.20"
+set "TOP_K=20"
+set "MIN_P=0.05"
+
 if not exist "%LLAMA_EXE%" (
     echo [Gillsystems] ERROR: llama-server.exe not found at "%LLAMA_EXE%"
     pause
@@ -30,10 +35,11 @@ if not exist "%MODEL%" (
   --port 8012 ^
   --host 10.0.0.93 ^
   --context-shift ^
-  --temperature 1.0 ^
-  --top-k 64 ^
-  --top-p 0.95 ^
-  -r "<|im_end|>,<|im_start|>" ^
+  --temperature %TEMPERATURE% ^
+  --top-k %TOP_K% ^
+  --min-p %MIN_P% ^
+  -r "<|im_end|>" ^
+  -r "<|im_start|>" ^
   --metrics ^
   --no-mmap
 
