@@ -21,7 +21,7 @@ This round 4 analysis was anchored to the following upstream sources instead of 
 
 ---
 
-## 2. Ten-Expert Review Panel
+## 2. Twenty-Expert Review Panel
 
 | Expert | Specialty | Round 4 conclusion |
 |---|---|---|
@@ -35,6 +35,16 @@ This round 4 analysis was anchored to the following upstream sources instead of 
 | 8. Prompt Template Specialist | Chat formatting | Explicit Gemma chat-template alignment is safer than depending on accidental defaults when the workload is strict structured reporting. |
 | 9. Regression Engineer | Preventing future drift | The repo had no launcher regression tests, so the round 3 drift was invisible until live prompts failed. |
 | 10. Documentation Steward | Repo truthfulness | README, UserGuide, local configuration, changelog, and conductor status all overstated round 3 readiness and referenced stale launcher names or behaviors. |
+| 11. Field Failure Reviewer | Real-run evidence triage | The first round 4 fix set did not actually fit the field evidence: Main failed at startup while Deck and HTPC degraded qualitatively under the looser sampler. |
+| 12. Windows Path Auditor | Node-local storage conventions | The Main node launcher ignored the canonical `C:\Models\Working_Models\` root documented elsewhere in the repo and instead assumed a single brittle path. |
+| 13. Linux Ops Reviewer | Operator ergonomics | The Linux launchers needed model-path override hooks so field corrections do not require ad hoc file edits on the node. |
+| 14. Determinism Specialist | Reproducible inference | This workload is a verification prompt, not a creative chat session, so deterministic decoding is a better operational default than a loose family-wide sampler. |
+| 15. Structured Output Reviewer | JSON and code extraction reliability | The bad Steam Deck and HTPC outputs fit a decoder drift problem more than a raw hardware-capacity problem. |
+| 16. Test Strategy Reviewer | Gap analysis | The first regression suite only checked template, caps, and reverse-prompt removal, so it never protected decoding policy or model-root assumptions. |
+| 17. Config Consistency Auditor | Repo contract alignment | Local configuration, changelog history, and launcher text all pointed to a stricter cluster baseline than the first round 4 patch actually enforced. |
+| 18. Runtime Diagnostics Reviewer | Dry-run behavior | Dry-run mode needs to surface missing binaries or model files immediately so operators can catch broken nodes before a live attempt. |
+| 19. Fleet Consistency Reviewer | Cross-node parity | The fleet should share one verification decode contract unless a node has a proven hardware reason to diverge. |
+| 20. Delivery Reviewer | Ship-readiness | A launcher change is not complete if the docs still instruct operators to use a dead path or a superseded decode profile. |
 
 ---
 
@@ -58,7 +68,7 @@ This round 4 analysis was anchored to the following upstream sources instead of 
 ### Upstream Mismatch Summary
 
 - The **llama.cpp server docs** explicitly support request-level `stop` arrays for API completions; the launchers were pretending a reverse-prompt flag would solve that at the server level.
-- The **Gemma 4 model card** recommends the standard sampling baseline of `temperature=1.0`, `top_p=0.95`, and `top_k=64`.
+- The **Gemma 4 model card** recommends a standard family baseline of `temperature=1.0`, `top_p=0.95`, and `top_k=64`, but that generic sampler was not the right operational choice for this repo's deterministic cluster-validation prompt.
 - The **Gemma 4 overview** makes clear that E4B and 31B have very different memory footprints, so the node-specific path forward should be based on runtime caps and hardware roles, not one-size-fits-all “infinite output” assumptions.
 
 ---
@@ -67,10 +77,10 @@ This round 4 analysis was anchored to the following upstream sources instead of 
 
 | Node | Winning path | Vote | Why this won |
 |---|---|---|---|
-| **Gillsystems-Main** | Keep `gemma-4-31B.Q4_K_M.gguf`, keep the larger context, add explicit Gemma chat-template, add logging/path validation, remove reverse-prompt hack, cap default output at `2048` tokens | 10-0 | The 31B node is the primary quality node. Its failure mode was not lack of model capacity; it was uncapped generation plus misleading stop handling. |
-| **Gillsystems-HTPC** | Keep `gemma-4-E4B.Q6_K.gguf`, align to Gemma template + official sampling baseline, resolve binary/lib/runtime directories coherently, cap output at `1536` tokens | 9-1 | The panel agreed the HTPC should remain the balanced Linux worker. One dissenting reviewer wanted a colder sampler, but the attached log already showed the low-temperature round 3 profile was not trustworthy. |
-| **Gillsystems-Laptop** | Keep `gemma-4-E4B.Q6_K.gguf`, add Windows fallback resolution, keep Tier 2 compatibility via `LLAMA_HIP_UMA=1`, align to Gemma template, cap output at `1024` tokens | 10-0 | The laptop is a constrained edge node. Reliability comes from bounded output and runtime-path correctness, not from asking a mobile Vega node to behave like a server-grade system. |
-| **Gillsystems-Steam-Deck** | Keep `gemma-4-E4B.Q6_K.gguf`, preserve Vulkan library pairing, add root log capture, align to Gemma template, cap output at `1024` tokens | 10-0 | The Deck already had the correct high-level runtime pairing. It mainly lacked bounded output, consistent logging, and alignment with the fleet’s corrected chat/runtime assumptions. |
+| **Gillsystems-Main** | Keep `gemma-4-31B.Q4_K_M.gguf`, keep the larger context, add explicit Gemma chat-template, resolve the model from canonical node roots, remove reverse-prompt hack, and cap default output at `2048` tokens | 20-0 | The 31B node is still the primary quality node. The missed failure mode was not model quality; it was a bad hardcoded model path plus the earlier stop-handling mistakes. |
+| **Gillsystems-HTPC** | Keep `gemma-4-E4B.Q6_K.gguf`, align to Gemma template, restore the deterministic cluster sampler, resolve binary/lib/runtime directories coherently, and cap output at `1536` tokens | 20-0 | The HTPC should remain the balanced Linux worker. The first round 4 pass got the sampler wrong by drifting from the repo's deterministic cluster baseline to a looser generic profile. |
+| **Gillsystems-Laptop** | Keep `gemma-4-E4B.Q6_K.gguf`, add Windows fallback resolution, keep Tier 2 compatibility via `LLAMA_HIP_UMA=1`, restore the deterministic cluster sampler, and cap output at `1024` tokens | 20-0 | The laptop is a constrained edge node. Reliability comes from bounded output, deterministic decoding, and runtime-path correctness. |
+| **Gillsystems-Steam-Deck** | Keep `gemma-4-E4B.Q6_K.gguf`, preserve Vulkan library pairing, add root log capture, restore the deterministic cluster sampler, and cap output at `1024` tokens | 20-0 | The Deck already had the right high-level runtime pairing. The field failure showed the first round 4 sampler change made the node too loose for this verification workload. |
 
 ---
 
@@ -79,25 +89,26 @@ This round 4 analysis was anchored to the following upstream sources instead of 
 ### Main Rig
 
 - This is the only node carrying the Dense 31B model, so it remains the primary answer-quality node.
-- The fix targets the real fault line: runaway default generation when the client does not send `max_tokens` or explicit stop strings.
+- The fix targets the real fault line: the launcher was pointing at the wrong Windows model root and still needed bounded output when the client does not send `max_tokens` or explicit stop strings.
 - The launcher now behaves like a production script instead of a raw one-off command line.
 
 ### HTPC
 
 - The HTPC remains the best Linux fallback worker with stable fixed power, real VRAM, and room for persistent logging.
-- The round 3 low-temperature profile already failed under the verification prompt, so round 4 stops treating “colder is safer” as fact.
+- The first round 4 pass replaced the repo's deterministic validation profile with a looser generic sampler, and that drift shows up directly in the bad field outputs.
 - The node now resolves its executable, shared libraries, and rocBLAS support tree as a coherent unit.
 
 ### Laptop
 
 - The laptop is a mobile edge node, so the correct move is to cap generation aggressively and keep runtime discovery flexible.
+- The laptop now follows the same deterministic decode contract as the rest of the fleet instead of a node-specific generic sampler.
 - The round 4 path also preserves HIP UMA compatibility without forcing HIP-only operation if the local binary is actually Vulkan-backed.
 - The node is now aligned with the canonical install root and mirrored source-tree behavior documented elsewhere in the repo.
 
 ### Steam Deck
 
 - The Steam Deck remains a Vulkan-first edge validator.
-- The main value of round 4 here is not changing the hardware strategy; it is tightening launch discipline so the node produces bounded, inspectable results instead of optimistic but unverifiable output.
+- The main value of round 4 here is not changing the hardware strategy; it is tightening launch discipline so the node produces bounded, deterministic, inspectable results instead of optimistic but unverifiable output.
 - Logging is now first-class, which matters on the Deck because transient failures are otherwise hard to reconstruct.
 
 ---
@@ -115,8 +126,10 @@ The repo changes for round 4 were executed one file at a time in this order:
 Common corrections across the production launchers:
 
 - Added explicit Gemma chat-template alignment.
+- Restored the deterministic cluster decode profile (`--temperature 0 --min-p 0.05 --top-k 20 --top-p 1.0`).
 - Added bounded default generation length with `-n`.
 - Removed the reverse-prompt stop hack.
+- Added node-specific model-path overrides and fallback discovery.
 - Added or standardized log capture.
 - Added better executable/runtime path resolution.
 - Preserved `--context-shift`, `--metrics`, and `--no-mmap`.

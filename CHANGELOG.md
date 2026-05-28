@@ -11,7 +11,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - **Round 3 regression acknowledged:** The attached cluster verification logs showed that the round 3 launcher set was not stable under the shared validation prompt. This repo now treats round 4 as the corrective launcher pass rather than claiming round 3 was production-complete.
-- **Production launcher contract tightened:** All four production launchers now use explicit Gemma chat-template alignment, capped default generation lengths, better runtime path resolution, and root `logs/` capture.
+- **Production launcher contract tightened:** All four production launchers now use explicit Gemma chat-template alignment, the deterministic cluster decode profile (`--temperature 0 --min-p 0.05 --top-k 20 --top-p 1.0`), capped default generation lengths, better runtime path resolution, and root `logs/` capture.
+- **Main launcher path bug fixed:** The Main Windows launcher now prefers the canonical `C:\Models\Working_Models\` root and supports `GILLSYSTEMS_MAIN_MODEL_PATH` instead of assuming a single broken model path.
 - **Reverse prompt stop hack removed:** The production launchers no longer rely on `-r "<|im_end|>,<|im_start|>"` as if it were an API stop mechanism. The upstream `llama-server` docs reserve reverse prompts for interactive mode.
 
 ### Added

@@ -8,7 +8,24 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-MODEL_PATH="/home/deck/Desktop/Models/gemma-4-E4B.Q6_K.gguf"
+MODEL_FILENAME="gemma-4-E4B.Q6_K.gguf"
+MODEL_PATH="${GILLSYSTEMS_STEAMDECK_MODEL_PATH:-}"
+
+if [[ -z "$MODEL_PATH" ]]; then
+  for candidate in \
+    "/home/deck/Desktop/Models/$MODEL_FILENAME" \
+    "/home/deck/Desktop/Models/Working_Models/$MODEL_FILENAME" \
+    "/gillsystems_zfs_pool/AI_storage/Models/$MODEL_FILENAME"; do
+    if [[ -z "$MODEL_PATH" && -f "$candidate" ]]; then
+      MODEL_PATH="$candidate"
+    fi
+  done
+fi
+
+if [[ -z "$MODEL_PATH" ]]; then
+  MODEL_PATH="/home/deck/Desktop/Models/$MODEL_FILENAME"
+fi
+
 HOST="10.0.0.139"
 PORT="8013"
 CTX_SIZE="32768"
@@ -20,10 +37,11 @@ PARALLEL_REQUESTS="1"
 FLASH_ATTN="on"
 CHAT_TEMPLATE="gemma"
 
-# Gemma 4 model card baseline
-TEMPERATURE="1.0"
-TOP_K="64"
-TOP_P="0.95"
+# Deterministic Google-tuned baseline
+TEMPERATURE="0"
+MIN_P="0.05"
+TOP_K="20"
+TOP_P="1.0"
 REPEAT_PENALTY="1.15"
 REPEAT_LAST_N="128"
 
@@ -64,6 +82,8 @@ echo "Log:     $LOG_FILE"
 echo
 
 if [[ "${1:-}" == "--dry-run" ]]; then
+  [[ -x "$SERVER_EXE" ]] || echo "[Gillsystems] WARN: Binary not found at $SERVER_EXE"
+  [[ -f "$MODEL_PATH" ]] || echo "[Gillsystems] WARN: Model not found at $MODEL_PATH"
     echo "Dry run only. Command would launch the Steam Deck AI Server configuration above."
     exit 0
 fi
@@ -80,6 +100,7 @@ fi
 
 if [[ ! -f "$MODEL_PATH" ]]; then
     echo "[Gillsystems] ERROR: Model not found at $MODEL_PATH"
+  echo "[Gillsystems] Set GILLSYSTEMS_STEAMDECK_MODEL_PATH to override the detected model path."
     exit 1
 fi
 
@@ -96,7 +117,7 @@ set +e
 "$SERVER_EXE" \
   -m "$MODEL_PATH" \
   -c "$CTX_SIZE" \
-    -n "$N_PREDICT" \
+  -n "$N_PREDICT" \
   -ngl "$GPU_LAYERS" \
   -fa "$FLASH_ATTN" \
   -np "$PARALLEL_REQUESTS" \
@@ -105,15 +126,16 @@ set +e
   --port "$PORT" \
   --host "$HOST" \
   --jinja \
-    --chat-template "$CHAT_TEMPLATE" \
+  --chat-template "$CHAT_TEMPLATE" \
   --context-shift \
   --temperature "$TEMPERATURE" \
+  --min-p "$MIN_P" \
   --top-k "$TOP_K" \
-    --top-p "$TOP_P" \
-    --repeat-penalty "$REPEAT_PENALTY" \
-    --repeat-last-n "$REPEAT_LAST_N" \
+  --top-p "$TOP_P" \
+  --repeat-penalty "$REPEAT_PENALTY" \
+  --repeat-last-n "$REPEAT_LAST_N" \
   --metrics \
-    --no-mmap 2>&1 | tee -a "$LOG_FILE"
+  --no-mmap 2>&1 | tee -a "$LOG_FILE"
 EXIT_CODE=${PIPESTATUS[0]}
 set -e
 

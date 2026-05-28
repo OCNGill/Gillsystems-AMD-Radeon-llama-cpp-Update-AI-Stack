@@ -134,7 +134,7 @@ python -m src.main --check-only
 
 ## Server Launchers
 
-Round 4 re-stabilizes the production launchers around the real `llama-server` and Gemma 4 runtime contract: explicit Gemma chat-template usage, bounded default generation, correct runtime path resolution, and log capture under the repo root.
+Round 4 re-stabilizes the production launchers around the real `llama-server` runtime contract: explicit Gemma chat-template usage, deterministic Google-tuned decode controls, node-aware model path resolution, bounded default generation, and log capture under the repo root.
 
 | Launcher | Node | OS | Model | Backend | Context | Default max output |
 |---|---|---|---|---|---|---|
@@ -146,17 +146,19 @@ Round 4 re-stabilizes the production launchers around the real `llama-server` an
 
 **All production launchers now:**
 - Use `--jinja` with `--chat-template gemma`
+- Use the deterministic cluster decode profile: `--temperature 0 --min-p 0.05 --top-k 20 --top-p 1.0`
 - Keep `-b 2048`, `-ub 512`, `--context-shift`, `--metrics`, and `--no-mmap`
 - Write launch logs into the repo-root `logs/` directory
 - Cap default generation length with `-n` so missing client-side `max_tokens` can no longer run unbounded
 - Do **not** rely on `-r/--reverse-prompt` for API stop behavior
+- Support node-specific model path overrides instead of a single hardcoded model root
 
 **API stop behavior:** For OpenAI-compatible chat clients, send an explicit `stop` array such as `[
   "<|im_end|>",
   "<|im_start|>"
 ]` when you need hard stop-word behavior. `llama-server` documents stop arrays for API completions; reverse prompts are for interactive mode.
 
-**Main notes:** The main launcher keeps the Dense 31B model as the highest-quality node, adds root logging, and resolves portable rocBLAS support files when present.
+**Main notes:** The main launcher keeps the Dense 31B model as the highest-quality node, prefers the canonical `C:\Models\Working_Models\` root, accepts `GILLSYSTEMS_MAIN_MODEL_PATH` as an override, and resolves portable rocBLAS support files when present.
 
 **HTPC notes:** The HTPC launcher resolves its executable, shared-library directory, and optional `ROCBLAS_TENSILE_LIBPATH` as a coherent runtime set.
 

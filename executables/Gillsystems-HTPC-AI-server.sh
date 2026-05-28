@@ -34,7 +34,24 @@ resolve_node_name() {
     printf '%s\n' "$candidate"
 }
 
-MODEL_PATH="/home/gillsystems-htpc/Desktop/Models/gemma-4-E4B.Q6_K.gguf"
+MODEL_FILENAME="gemma-4-E4B.Q6_K.gguf"
+MODEL_PATH="${GILLSYSTEMS_HTPC_MODEL_PATH:-}"
+
+if [[ -z "$MODEL_PATH" ]]; then
+    for candidate in \
+        "/home/gillsystems-htpc/Desktop/Models/$MODEL_FILENAME" \
+        "/home/gillsystems-htpc/Desktop/Models/Working_Models/$MODEL_FILENAME" \
+        "/gillsystems_zfs_pool/AI_storage/Models/$MODEL_FILENAME"; do
+        if [[ -z "$MODEL_PATH" && -f "$candidate" ]]; then
+            MODEL_PATH="$candidate"
+        fi
+    done
+fi
+
+if [[ -z "$MODEL_PATH" ]]; then
+    MODEL_PATH="/home/gillsystems-htpc/Desktop/Models/$MODEL_FILENAME"
+fi
+
 HOST="10.0.0.42"
 PORT="8011"
 CTX_SIZE="32768"
@@ -46,10 +63,11 @@ PARALLEL_REQUESTS="1"
 FLASH_ATTN="on"
 CHAT_TEMPLATE="gemma"
 
-# Gemma 4 model card baseline
-TEMPERATURE="1.0"
-TOP_K="64"
-TOP_P="0.95"
+# Deterministic Google-tuned baseline
+TEMPERATURE="0"
+MIN_P="0.05"
+TOP_K="20"
+TOP_P="1.0"
 REPEAT_PENALTY="1.15"
 REPEAT_LAST_N="128"
 
@@ -82,6 +100,8 @@ echo "Log:     $LOG_FILE"
 echo
 
 if [[ "${1:-}" == "--dry-run" ]]; then
+    [[ -x "$SERVER_EXE" ]] || echo "[Gillsystems] WARN: llama-server executable not found at $SERVER_EXE"
+    [[ -f "$MODEL_PATH" ]] || echo "[Gillsystems] WARN: Model not found at $MODEL_PATH"
     echo "Dry run only. Command would launch the HTPC server configuration above."
     exit 0
 fi
@@ -93,6 +113,7 @@ fi
 
 if [[ ! -f "$MODEL_PATH" ]]; then
     echo "[Gillsystems] ERROR: Model not found at $MODEL_PATH"
+    echo "[Gillsystems] Set GILLSYSTEMS_HTPC_MODEL_PATH to override the detected model path."
     exit 1
 fi
 
@@ -141,6 +162,7 @@ set +e
     --chat-template "$CHAT_TEMPLATE" \
   --context-shift \
   --temperature "$TEMPERATURE" \
+    --min-p "$MIN_P" \
   --top-k "$TOP_K" \
     --top-p "$TOP_P" \
     --repeat-penalty "$REPEAT_PENALTY" \

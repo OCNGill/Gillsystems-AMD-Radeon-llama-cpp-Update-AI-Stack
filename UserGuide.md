@@ -38,7 +38,8 @@ Round 4 keeps dedicated launchers for every Gillsystems node, but corrects the o
 ```bat
 executables/Gillsystems_Main_AI_Server.bat
 ```
-- Model: `C:\Models\gemma-4-31B.Q4_K_M.gguf`
+- Model: `gemma-4-31B.Q4_K_M.gguf`
+- Model path resolution: prefers `C:\Models\Working_Models\gemma-4-31B.Q4_K_M.gguf`; override with `GILLSYSTEMS_MAIN_MODEL_PATH`
 - Context: 49 152 tokens
 - Default output cap: 2 048 tokens
 - Gemma alignment: `--jinja` + `--chat-template gemma`
@@ -77,7 +78,7 @@ executables/Gillsystems_server_edit_per_node.bat
 executables/Gillsystems_server_edit_per_node.sh
 ```
 
-All production launchers use the Gemma 4 baseline sampler (`temperature 1.0`, `top_k 64`, `top_p 0.95`), plus `--jinja`, `--chat-template gemma`, `--context-shift`, `--metrics`, and `--no-mmap`.
+All production launchers use the deterministic cluster sampler (`temperature 0`, `min-p 0.05`, `top-k 20`, `top-p 1.0`), plus `--jinja`, `--chat-template gemma`, `--context-shift`, `--metrics`, and `--no-mmap`.
 
 For OpenAI-compatible chat clients, send an explicit `stop` array such as `[
   "<|im_end|>",

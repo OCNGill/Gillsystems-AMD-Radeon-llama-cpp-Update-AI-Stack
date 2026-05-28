@@ -3,7 +3,23 @@ setlocal EnableExtensions EnableDelayedExpansion
 
 cd /d "%~dp0"
 
-set "MODEL_PATH=C:\Models\gemma-4-31B.Q4_K_M.gguf"
+set "MODEL_FILENAME=gemma-4-31B.Q4_K_M.gguf"
+set "MODEL_PATH="
+if defined GILLSYSTEMS_MAIN_MODEL_PATH (
+  set "MODEL_PATH=%GILLSYSTEMS_MAIN_MODEL_PATH%"
+) else (
+  for %%P in (
+    "C:\Models\Working_Models\%MODEL_FILENAME%"
+    "%USERPROFILE%\Desktop\Models\Working_Models\%MODEL_FILENAME%"
+    "C:\Models\%MODEL_FILENAME%"
+    "%USERPROFILE%\Desktop\Models\%MODEL_FILENAME%"
+    "%USERPROFILE%\Downloads\%MODEL_FILENAME%"
+  ) do (
+    if not defined MODEL_PATH if exist "%%~P" set "MODEL_PATH=%%~P"
+  )
+)
+
+if not defined MODEL_PATH set "MODEL_PATH=C:\Models\Working_Models\%MODEL_FILENAME%"
 set "HOST=10.0.0.164"
 set "PORT=8010"
 set "CTX_SIZE=49152"
@@ -15,9 +31,10 @@ set "BATCH_SIZE=2048"
 set "UBATCH_SIZE=512"
 set "CHAT_TEMPLATE=gemma"
 
-set "TEMPERATURE=1.0"
-set "TOP_K=64"
-set "TOP_P=0.95"
+set "TEMPERATURE=0"
+set "MIN_P=0.05"
+set "TOP_K=20"
+set "TOP_P=1.0"
 set "REPEAT_PENALTY=1.15"
 set "REPEAT_LAST_N=128"
 
@@ -53,6 +70,8 @@ echo Log:     %LOG_FILE%
 echo.
 
 if /I "%~1"=="--dry-run" (
+  if not exist "%SERVER_EXE%" echo [Gillsystems] WARN: llama-server.exe not found at "%SERVER_EXE%"
+  if not exist "%MODEL_PATH%" echo [Gillsystems] WARN: Model not found at "%MODEL_PATH%"
   echo Dry run only. Command would launch the Main node configuration above.
   exit /b 0
 )
@@ -65,6 +84,7 @@ if not exist "%SERVER_EXE%" (
 
 if not exist "%MODEL_PATH%" (
   echo [Gillsystems] ERROR: Model not found at "%MODEL_PATH%"
+  echo [Gillsystems] Set GILLSYSTEMS_MAIN_MODEL_PATH to override the detected model path.
   pause
   exit /b 1
 )
@@ -87,6 +107,7 @@ set "GS_BATCH_SIZE=%BATCH_SIZE%"
 set "GS_UBATCH_SIZE=%UBATCH_SIZE%"
 set "GS_CHAT_TEMPLATE=%CHAT_TEMPLATE%"
 set "GS_TEMPERATURE=%TEMPERATURE%"
+set "GS_MIN_P=%MIN_P%"
 set "GS_TOP_K=%TOP_K%"
 set "GS_TOP_P=%TOP_P%"
 set "GS_REPEAT_PENALTY=%REPEAT_PENALTY%"
@@ -113,6 +134,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
     '--chat-template' $env:GS_CHAT_TEMPLATE ^
     '--context-shift' ^
     '--temperature' $env:GS_TEMPERATURE ^
+    '--min-p' $env:GS_MIN_P ^
     '--top-k' $env:GS_TOP_K ^
     '--top-p' $env:GS_TOP_P ^
     '--repeat-penalty' $env:GS_REPEAT_PENALTY ^
