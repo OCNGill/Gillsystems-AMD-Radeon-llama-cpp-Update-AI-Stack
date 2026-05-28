@@ -15,5 +15,5 @@ An autonomous, reboot-resilient agent system that keeps ROCm/HIP and llama.cpp a
 - `conductor/setup_state.json`
 
 ## Status
-**Phase:** Deploy — v2.1.0 Released (Round 3 Base Tuning Complete / Gearing for IT Variants)
-**Last Updated:** 2026-05-27
+**Phase:** Debug / Document — Round 4 launcher stabilization prepared after round 3 verification failed on the shared cluster prompt
+**Last Updated:** 2026-05-28

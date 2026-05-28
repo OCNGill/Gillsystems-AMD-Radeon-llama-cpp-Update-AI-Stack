@@ -157,11 +157,15 @@ deck-node  192.0.2.139   (SteamOS — Worker)
 
 ---
 
-## Tier 2 Server Launcher References
+## Server Launcher References
 
 - **Shared templates:** `executables/server_edit_per_node.bat` and `executables/server_edit_per_node.sh` are the editable per-node server launchers in `executables/`.
-- **mobile-node:** `executables/server_mobile_uma_windows.bat` is the dedicated Tier 2 server-only launcher for the Vega 6 node at `192.0.2.93`.
-- **deck-node:** `executables/server_deck_vulkan_linux.sh` is the dedicated Tier 2 server-only launcher for the Steam Deck node at `192.0.2.139`.
+- **primary-node:** `executables/server_primary_hip_windows.bat` is the dedicated Tier 1 server launcher for the RX 7900 XTX node at `192.0.2.10`.
+- **desktop-node:** `executables/server_desktop_rocm_linux.sh` is the dedicated Tier 1 server launcher for the RX 7600 node at `192.0.2.42`.
+- **mobile-node:** `executables/server_mobile_uma_windows.bat` is the dedicated Tier 2 server launcher for the Vega 6 node at `192.0.2.93`.
+- **deck-node:** `executables/server_deck_vulkan_linux.sh` is the dedicated Tier 2 server launcher for the Steam Deck node at `192.0.2.139`.
+- **Round 4 runtime contract:** production launchers now use the Gemma chat template explicitly, cap default generation length per node, and write run logs into the repo-root `logs/` directory.
+- **API stop behavior:** OpenAI-compatible callers must still send explicit stop strings such as `"<|im_end|>"` and `"<|im_start|>"` when hard stop-word behavior is required.
 - **Executable layout:** updater installs remain canonical at `C:\Gillsystems\llama.cpp\bin` on Windows and `/opt/gillsystems/llama.cpp/bin` on Linux, while successful runs also mirror those binaries into `<llama_cpp_source>/bin` for source-tree launch workflows.
 
 ---

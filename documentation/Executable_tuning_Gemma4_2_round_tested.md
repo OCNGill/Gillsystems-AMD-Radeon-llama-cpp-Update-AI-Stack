@@ -2,13 +2,15 @@
 
 **File Location:** `/docs/engineering/executable_tuning_history.md`
 
-**Status:** Completed Round 2 Verification | Initializing Round 3 (Google-Tuned Baseline)
+**Status:** Round 3 verification failed on the shared cluster prompt | Superseded by `documentation/round-4-launcher-stabilization.md`
 
 **System Prefix:** `gillsystems`
 
 ---
 
 ## 1. Executive Summary & Core Mission
+
+> **Round 4 note (2026-05-28):** The shared verification prompt still failed under the round 3 launcher set. The follow-up fix pass removes reverse-prompt misuse, adds capped generation per node, aligns every production launcher to the Gemma chat template, and records the 10-expert vote outcomes in `documentation/round-4-launcher-stabilization.md`.
 
 This log documents the iterative engineering cycles required to optimize and stabilize local `llama-server` deployments across the distributed cluster. The deployment architecture transitions resource allocation entirely away from fragile cloud architectures into a completely localized, sovereign, user-controlled processing matrix.
 

@@ -90,3 +90,14 @@ _Completed 2026-05-27_
 - [x] Update documentation across README, UserGuide, and CHANGELOG
 - [x] Build automated internal bumping script (`bump_version.py`)
 - [x] Committed and tagged v2.1.0
+
+## Phase 11: Round 4 Launcher Stabilization (Debug / Document)
+_Repo corrections completed 2026-05-28; live rerun pending_
+- [x] Analyze the attached cluster logs against the production launcher code and upstream docs
+- [x] Remove reverse-prompt reliance from all four production launchers
+- [x] Add explicit Gemma chat-template alignment to all four production launchers
+- [x] Add node-specific default output caps via `-n`
+- [x] Harden runtime path resolution and log capture for all production launchers
+- [x] Add static launcher regression tests
+- [x] Write the round 4 engineering report and preserve the same validation prompt
+- [ ] Re-run the shared cluster verification prompt on all four live nodes

@@ -28,8 +28,10 @@
 ## Server Launchers
 - **`executables/server_edit_per_node.bat`** — Windows `llama-server.exe` editable launcher with timestamped `logs/` output, portable rocBLAS Tensile path wiring, and Gemma-safe defaults (no MTP flags)
 - **`executables/server_edit_per_node.sh`** — Linux `llama-server` editable launcher with timestamped `logs/` output and Gemma-safe defaults (no MTP flags)
-- **`executables/server_mobile_uma_windows.bat`** — Dedicated Windows Tier 2 server-only launcher for the Laptop/Vega 6 node with path fallbacks for mirrored source-root, active build tree, and canonical install roots
-- **`executables/server_deck_vulkan_linux.sh`** — Dedicated Linux Tier 2 server-only launcher for the Steam Deck node with path fallbacks for mirrored source-root, active build tree, and canonical install roots
+- **`executables/server_primary_hip_windows.bat`** — Dedicated Windows Tier 1 launcher for the Dense 31B main node with root-log capture, rocBLAS path wiring, explicit Gemma template alignment, and a 2048-token default output cap
+- **`executables/server_desktop_rocm_linux.sh`** — Dedicated Linux Tier 1 launcher for the HTPC node with paired executable/library resolution, optional rocBLAS Tensile wiring, explicit Gemma template alignment, and a 1536-token default output cap
+- **`executables/server_mobile_uma_windows.bat`** — Dedicated Windows Tier 2 launcher for the Laptop/Vega 6 node with canonical install and mirrored source-tree fallbacks, HIP UMA compatibility, explicit Gemma template alignment, and a 1024-token default output cap
+- **`executables/server_deck_vulkan_linux.sh`** — Dedicated Linux Tier 2 launcher for the Steam Deck node with Vulkan build-tree library pairing, root-log capture, explicit Gemma template alignment, and a 1024-token default output cap
 
 ## OS Targets
 - **Linux:** Ubuntu 22.04 / 24.04 (primary), Fedora (secondary), SteamOS / Arch (Steam Deck)
