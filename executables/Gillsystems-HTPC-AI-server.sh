@@ -125,8 +125,7 @@ set +e
   --min-p "$MIN_P" \
     --repeat-penalty "$REPEAT_PENALTY" \
     --repeat-last-n "$REPEAT_LAST_N" \
-  -r "<|im_end|>" \
-  -r "<|im_start|>" \
+    -r "<|im_end|>,<|im_start|>" \
   --metrics \
   --no-mmap 2>&1 | tee -a "$LOG_FILE"
 EXIT_CODE=${PIPESTATUS[0]}

@@ -79,7 +79,6 @@ exec "$SERVER_EXE" \
   --min-p "$MIN_P" \
     --repeat-penalty "$REPEAT_PENALTY" \
     --repeat-last-n "$REPEAT_LAST_N" \
-  -r "<|im_end|>" \
-  -r "<|im_start|>" \
+    -r "<|im_end|>,<|im_start|>" \
   --metrics \
   --no-mmap

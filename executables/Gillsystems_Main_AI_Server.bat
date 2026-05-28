@@ -9,7 +9,7 @@ timeout /t 3 /nobreak >nul
 
 llama-server.exe ^
   -m "C:\Models\gemma-4-31B.Q4_K_M.gguf" ^
-  -c 65536 ^
+  -c 49152 ^
   -ngl 99 ^
   -fa on ^
   -np 1 ^
@@ -17,13 +17,13 @@ llama-server.exe ^
   -ub 512 ^
   --port 8010 ^
   --host 10.0.0.164 ^
+  --context-shift ^
   --temperature 1.0 ^
   --top-k 64 ^
   --top-p 0.95 ^
   --repeat-penalty 1.15 ^
   --repeat-last-n 128 ^
-  -r "<|im_end|>" ^
-  -r "<|im_start|>" ^
+  -r "<|im_end|>,<|im_start|>" ^
   --metrics ^
   --no-mmap
 

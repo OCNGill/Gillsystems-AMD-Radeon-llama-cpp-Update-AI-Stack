@@ -45,8 +45,7 @@ timeout /t 3 /nobreak >nul
   --min-p %MIN_P% ^
   --repeat-penalty 1.15 ^
   --repeat-last-n 128 ^
-  -r "<|im_end|>" ^
-  -r "<|im_start|>" ^
+  -r "<|im_end|>,<|im_start|>" ^
   --metrics ^
   --no-mmap
 
