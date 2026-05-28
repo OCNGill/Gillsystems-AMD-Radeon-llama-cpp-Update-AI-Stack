@@ -78,3 +78,15 @@ _Completed 2026-05-06_
 - [x] Create `CHANGELOG.md` with full project history from git log
 - [x] Update `conductor/setup_state.json` phase to `Debug / Deliver`
 - [x] Update `conductor/index.md` phase to `Debug / Deliver`
+
+## Phase 10: v2.1 Round 3 Google-Tuned Baseline (Deploy)
+_Completed 2026-05-27_
+- [x] Integrate Google Gemma 4 base variants as standard architecture
+- [x] Define logical (`-b 2048`) and physical (`-ub 512`) boundaries
+- [x] Lock filter selection cut-offs to `--min-p 0.05` and `--top-k 20`
+- [x] Enable metrics, no-mmap, and context-shift globally
+- [x] Resolve Steam Deck out-of-memory context constraints (down-tuned to 32K)
+- [x] Commit non-hallucination executable adjustments
+- [x] Update documentation across README, UserGuide, and CHANGELOG
+- [x] Build automated internal bumping script (`bump_version.py`)
+- [x] Committed and tagged v2.1.0
