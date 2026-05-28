@@ -6,6 +6,51 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased] — 2026-05-28 — Round 4 Launcher Stabilization
+
+### Changed
+
+- **Round 3 regression acknowledged:** The attached cluster verification logs showed that the round 3 launcher set was not stable under the shared validation prompt. This repo now treats round 4 as the corrective launcher pass rather than claiming round 3 was production-complete.
+- **Production launcher contract tightened:** All four production launchers now use explicit Gemma chat-template alignment, capped default generation lengths, better runtime path resolution, and root `logs/` capture.
+- **Reverse prompt stop hack removed:** The production launchers no longer rely on `-r "<|im_end|>,<|im_start|>"` as if it were an API stop mechanism. The upstream `llama-server` docs reserve reverse prompts for interactive mode.
+
+### Added
+
+- **Round 4 analysis artifact:** `documentation/round-4-launcher-stabilization.md` captures the 10-expert review panel, per-node vote outcomes, upstream references, and the executed correction set.
+- **Launcher regression tests:** `tests/test_server_launchers.py` statically enforces Gemma template usage, default output caps, removal of the reverse-prompt workaround, and preservation of core runtime safeguards.
+
+### Validation Prompt
+
+Round 4 intentionally reuses the same prompt that exposed the round 3 failure:
+
+```markdown
+## Gillsystems Cluster Verification Protocol: Round 3
+
+## Hardware Footprint: Distributed Computing Stack Alignment
+
+### 1. Ingestion Profiling Matrix
+
+[Initialize an exhaustive processing chain to verify node stability under the Google-tuned sampling baselines. The following configuration array must be parsed without generating recursive token replication patterns or encountering memory heap allocation crashes.]
+
+### 2. Parameter Tuning Verification Bounds
+
+* Logical Execution Batch Size: -b 2048 (Prefill Parallelization Boundary)
+* Physical Multi-Batch Chunking Size: -ub 512 (APU Compute Alignment Layer)
+* Filter Selection Cut-offs: --min-p 0.05 | --top-k 20 (Google-Optimized Baseline)
+* Core Tracking Flags: --metrics | --no-mmap | --context-shift (Static Ring Tracking)
+
+### 3. Distributed Compute System Architecture Mapping
+
+**Task:** Generate a structural blueprint and definitive analysis mapping the operational topology, structural communication vectors, node role distribution, load balancing parameters, and single-point-of-failure vulnerabilities for the following host network map:
+
+* **Main Rig:** `10.0.0.164:8010` (Primary Orchestrator)
+* **HTPC Node:** `10.0.0.42:8011` (High-Precision Processing Edge)
+* **Laptop Node:** `10.0.0.93:8012` (Telemetry / Sync Worker)
+* **Steam Deck:** `10.0.0.139:8013` (Local Validation Node)
+
+**Output Requirement:** Deliver a detailed processing report containing an ingestion matrix, parameter check, structural text diagram, and step-by-step role distribution layout. Output must be structured, deterministic, and complete. Do not truncate.
+```
+
 ## [2.1.0] — 2026-05-27 — Round 3 Executable Tuning (Google-Tuned Baseline) & Pre-IT Variants
 
 ### Changed

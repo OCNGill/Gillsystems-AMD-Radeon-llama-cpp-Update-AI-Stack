@@ -28,8 +28,10 @@
 ## Server Launchers
 - **`executables/Gillsystems_server_edit_per_node.bat`** — Windows `llama-server.exe` editable launcher with timestamped `logs/` output, portable rocBLAS Tensile path wiring, and Gemma-safe defaults (no MTP flags)
 - **`executables/Gillsystems_server_edit_per_node.sh`** — Linux `llama-server` editable launcher with timestamped `logs/` output and Gemma-safe defaults (no MTP flags)
-- **`executables/Gillsystems_Laptop_iGPU_server.bat`** — Dedicated Windows Tier 2 server-only launcher for the Laptop/Vega 6 node with path fallbacks for mirrored source-root, active build tree, and canonical install roots
-- **`executables/Gillsystems_SteamDeck_AI_Server.sh`** — Dedicated Linux Tier 2 server-only launcher for the Steam Deck node with path fallbacks for mirrored source-root, active build tree, and canonical install roots
+- **`executables/Gillsystems_Main_AI_Server.bat`** — Dedicated Windows Tier 1 launcher for the Dense 31B main node with root-log capture, rocBLAS path wiring, explicit Gemma template alignment, and a 2048-token default output cap
+- **`executables/Gillsystems-HTPC-AI-server.sh`** — Dedicated Linux Tier 1 launcher for the HTPC node with paired executable/library resolution, optional rocBLAS Tensile wiring, explicit Gemma template alignment, and a 1536-token default output cap
+- **`executables/Gillsystems_Laptop_4500U_Vega6_server.bat`** — Dedicated Windows Tier 2 launcher for the Laptop/Vega 6 node with canonical install and mirrored source-tree fallbacks, HIP UMA compatibility, explicit Gemma template alignment, and a 1024-token default output cap
+- **`executables/Gillsystems_SteamDeck_AI_Server.sh`** — Dedicated Linux Tier 2 launcher for the Steam Deck node with Vulkan build-tree library pairing, root-log capture, explicit Gemma template alignment, and a 1024-token default output cap
 
 ## OS Targets
 - **Linux:** Ubuntu 22.04 / 24.04 (primary), Fedora (secondary), SteamOS / Arch (Steam Deck)

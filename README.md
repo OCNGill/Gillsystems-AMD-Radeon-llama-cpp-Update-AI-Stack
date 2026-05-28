@@ -14,7 +14,7 @@
 
 **Gillsystems AI Stack Updater** is a portable, invocation-only Python agent that keeps your AMD consumer GPU AI stack — ROCm/HIP and llama.cpp — current on both Windows and Linux with a single command. No manual headaches. Reboot-resilient. Fully automated.
 
-**v2.1 milestone:** Round 3 tuning brings Google-optimized execution baselines via Gemma 4 alignments. All nodes now run full 2048 logical batch prefilling against strictly locked 512 APU physical buffers. The fleet is now prepped for Instruction-Tuned (IT) variants and sovereign orchestration failover.
+**Status note:** The attached round 3 cluster verification logs showed that launcher behavior had drifted: outputs were uncapped, stop handling was incorrect for API usage, and the fleet was no longer consistent. Round 4 corrects the production launchers with explicit Gemma template alignment, bounded generation, runtime path resolution, and root log capture before the same verification prompt is rerun.
 - [Server Launchers](#server-launchers)
 - [Requirements](#requirements)
 - [CLI Reference](#cli-reference)
@@ -108,9 +108,10 @@ executables/Gillsystems_server_edit_per_node.sh
 Production-ready node-specific launchers in `executables/`:
 
 ```text
-executables/Gillsystems-HTPC-server-latest.sh          # KUbuntu, RX 7600
-executables/Gillsystems_SteamDeck_AI_Server.sh         # SteamOS, RDNA 2 APU
-executables/Gillsystems_Laptop_iGPU_server.bat         # Windows, Vega 6 iGPU
+executables/Gillsystems_Main_AI_Server.bat             # Windows 11, RX 7900 XTX, Gemma 4 31B
+executables/Gillsystems-HTPC-AI-server.sh              # KUbuntu, RX 7600, Gemma 4 E4B
+executables/Gillsystems_Laptop_4500U_Vega6_server.bat  # Windows 10, Vega 6, Gemma 4 E4B
+executables/Gillsystems_SteamDeck_AI_Server.sh         # SteamOS, RDNA 2 APU, Gemma 4 E4B
 ```
 
 ### Dry Run (safe preview — no changes made)
@@ -133,25 +134,33 @@ python -m src.main --check-only
 
 ## Server Launchers
 
-v2.0 ships production-quality server launchers for every Gillsystems node. Each launcher is tuned precisely for its hardware — context window, GPU offload layers, backend library path, and deterministic temperature. They are not generic templates.
+Round 4 re-stabilizes the production launchers around the real `llama-server` and Gemma 4 runtime contract: explicit Gemma chat-template usage, bounded default generation, correct runtime path resolution, and log capture under the repo root.
 
-| Launcher | Node | OS | GPU | Backend | Context | Temperature |
+| Launcher | Node | OS | Model | Backend | Context | Default max output |
 |---|---|---|---|---|---|---|
-| `executables/Gillsystems-HTPC-server-latest.sh` | Gillsystems-HTPC | KUbuntu | RX 7600 / gfx1102 | ROCm/HIP | 65 536 | 0 (greedy) |
-| `executables/Gillsystems_SteamDeck_AI_Server.sh` | Gillsystems-Steam-Deck | SteamOS | RDNA 2 APU / gfx1033 | Vulkan | 32 768 | 0 (greedy) |
-| `executables/Gillsystems_Laptop_iGPU_server.bat` | Gillsystems-Laptop | Windows 10 | Vega 6 / gfx90c | HIP UMA | configurable | configurable |
-| `executables/Gillsystems_server_edit_per_node.bat` / `.sh` | Any | Both | Any | Any | edit me | edit me |
+| `executables/Gillsystems_Main_AI_Server.bat` | Gillsystems-Main | Windows 11 | Gemma 4 31B Q4_K_M | HIP/ROCm | 49 152 | 2 048 |
+| `executables/Gillsystems-HTPC-AI-server.sh` | Gillsystems-HTPC | KUbuntu | Gemma 4 E4B Q6_K | ROCm/HIP | 32 768 | 1 536 |
+| `executables/Gillsystems_Laptop_4500U_Vega6_server.bat` | Gillsystems-Laptop | Windows 10 | Gemma 4 E4B Q6_K | Vulkan or HIP UMA | 32 768 | 1 024 |
+| `executables/Gillsystems_SteamDeck_AI_Server.sh` | Gillsystems-Steam-Deck | SteamOS | Gemma 4 E4B Q6_K | Vulkan | 32 768 | 1 024 |
+| `executables/Gillsystems_server_edit_per_node.bat` / `.sh` | Any | Both | edit me | edit me | edit me | edit me |
 
-**All launchers:**
-- Use `--temperature 0` for fully deterministic, reproducible outputs
-- Load `gemma-4-E4B.Q6_K.gguf` from the node's Desktop/Models path
-- Enable Flash Attention (`-fa on`) for RDNA architecture
-- Enable `--jinja`, `--context-shift`, `--metrics`, `--no-mmap`
-- Support a `--dry-run` flag to preview config without starting the server
+**All production launchers now:**
+- Use `--jinja` with `--chat-template gemma`
+- Keep `-b 2048`, `-ub 512`, `--context-shift`, `--metrics`, and `--no-mmap`
+- Write launch logs into the repo-root `logs/` directory
+- Cap default generation length with `-n` so missing client-side `max_tokens` can no longer run unbounded
+- Do **not** rely on `-r/--reverse-prompt` for API stop behavior
 
-**Steam Deck notes:** The launcher links directly to `/home/deck/src/llama.cpp/build-vulkan/bin` where the Vulkan-backend shared objects (`libllama-server-impl.so`, etc.) live after a successful build. No system-wide library install required.
+**API stop behavior:** For OpenAI-compatible chat clients, send an explicit `stop` array such as `[
+  "<|im_end|>",
+  "<|im_start|>"
+]` when you need hard stop-word behavior. `llama-server` documents stop arrays for API completions; reverse prompts are for interactive mode.
 
-**HTPC notes:** The launcher resolves the optional `/opt/gillsystems/llama.cpp/lib` canonical install path when present, and sets `ROCBLAS_TENSILE_LIBPATH` for the rocBLAS library. Context of 65 536 tokens confirmed stable on 8 GB VRAM + 16 GB RAM.
+**Main notes:** The main launcher keeps the Dense 31B model as the highest-quality node, adds root logging, and resolves portable rocBLAS support files when present.
+
+**HTPC notes:** The HTPC launcher resolves its executable, shared-library directory, and optional `ROCBLAS_TENSILE_LIBPATH` as a coherent runtime set.
+
+**Steam Deck notes:** The Steam Deck launcher still prefers the Vulkan build-tree library pairing under `/home/deck/src/llama.cpp/build-vulkan/bin`, but now captures logs and enforces an output cap.
 
 ---
 

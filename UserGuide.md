@@ -4,7 +4,7 @@
 
 # User Guide: Gillsystems AI Stack Updater Agent v2.1
 
-> **v2.1 — ROUND 3 TUNING.** The fleet has migrated standard node deployments to the Google-Optimized sample profile (Temperature 1.0, Top K 64, Top P 0.95) and fully locked APU compute chunks via -b 2048 and -ub 512. We are now prepared for Instruction-Tuned (IT) model orchestration.
+> **v2.1 — ROUND 4 STABILIZATION.** The attached round 3 logs showed launcher drift under the shared verification prompt. The production launchers now enforce explicit Gemma chat-template alignment, bounded default output, proper runtime path resolution, and root log capture before the same prompt is rerun.
 
 ## 📌 Getting Started
 
@@ -32,39 +32,44 @@ You can also run `bash ./update-ai-stack.sh --check-env` once to validate the Li
 
 ### Server Launchers — Production Node Configuration
 
-v2.0 ships fully validated, production-ready launchers for every Gillsystems node. Each is hard-coded for its exact hardware — binary path, library path, context size, GPU layers, and temperature. They are not generic templates; they are the launchers that actually passed real-world validation.
+Round 4 keeps dedicated launchers for every Gillsystems node, but corrects the operational contract that broke round 3: no more fake reverse-prompt stop handling, no more unbounded default output, and no more stale file references.
+
+**Main Rig (RX 7900 XTX / gfx1100 — HIP/ROCm, Tier 1):**
+```bat
+executables/Gillsystems_Main_AI_Server.bat
+```
+- Model: `C:\Models\gemma-4-31B.Q4_K_M.gguf`
+- Context: 49 152 tokens
+- Default output cap: 2 048 tokens
+- Gemma alignment: `--jinja` + `--chat-template gemma`
+- Logging: root `logs/` capture via PowerShell `Tee-Object`
 
 **KUbuntu HTPC (RX 7600 / gfx1102 — ROCm/HIP, Tier 1):**
 ```bash
 executables/Gillsystems-HTPC-AI-server.sh
 ```
-- Binary: `/home/gillsystems-htpc/src/llama.cpp/bin/llama-server`
-- Libs: `/opt/gillsystems/llama.cpp/lib` (canonical ROCm/HIP install)
-- Context: 65 536 tokens — confirmed stable on 8 GB VRAM + 16 GB RAM
-- GPU layers: 99 (full offload)
-- Flash Attention: on
-- Sampling: Temperature 1.0, Top_K 64, Top_P 0.95
-- Batching: 2048 logical, 512 physical
-- Supports `--dry-run`
+- Context: 32 768 tokens
+- Default output cap: 1 536 tokens
+- Runtime pairing: executable, shared libraries, and optional rocBLAS Tensile path are resolved together
+- Logging: root `logs/` capture via `tee`
+
+**Windows Laptop (Vega 6 iGPU / gfx90c — Vulkan or HIP UMA, Tier 2):**
+```bat
+executables/Gillsystems_Laptop_4500U_Vega6_server.bat
+```
+- Context: 32 768 tokens
+- Default output cap: 1 024 tokens
+- Runtime pairing: canonical install root plus mirrored source/build fallbacks
+- Compatibility: sets `LLAMA_HIP_UMA=1` when HIP runtime support is used
 
 **Steam Deck AI Server (RDNA 2 APU / gfx1033 — Vulkan, Tier 2):**
 ```bash
 executables/Gillsystems_SteamDeck_AI_Server.sh
 ```
-- Binary: `/home/deck/src/llama.cpp/bin/llama-server`
-- Libs: `/home/deck/src/llama.cpp/build-vulkan/bin` — points directly to the Vulkan build output where `libllama-server-impl.so` and all Vulkan-backend `.so` files live
-- Context: 32 768 tokens — right-sized for APU shared memory
-- GPU layers: 99
-- Flash Attention: on
-- Sampling: Temperature 1.0, Top_K 64, Top_P 0.95
-- Batching: 2048 logical, 512 physical
-- Supports `--dry-run`
-
-**Windows Laptop (Vega 6 iGPU / gfx90c — HIP UMA, Tier 2):**
-```bat
-executables/Gillsystems_Laptop_iGPU_server.bat
-```
-- Edit context and paths to suit; template ships with Gemma-safe defaults.
+- Context: 32 768 tokens
+- Default output cap: 1 024 tokens
+- Runtime pairing: prefers the Vulkan build-tree library directory used by the deck
+- Logging: root `logs/` capture via `tee`
 
 **Editable per-node templates in `executables/` (start here for a new node):**
 ```text
@@ -72,7 +77,12 @@ executables/Gillsystems_server_edit_per_node.bat
 executables/Gillsystems_server_edit_per_node.sh
 ```
 
-All launchers use `--temperature 0` for fully deterministic output, `--jinja`, `--context-shift`, `--metrics`, and `--no-mmap`.
+All production launchers use the Gemma 4 baseline sampler (`temperature 1.0`, `top_k 64`, `top_p 0.95`), plus `--jinja`, `--chat-template gemma`, `--context-shift`, `--metrics`, and `--no-mmap`.
+
+For OpenAI-compatible chat clients, send an explicit `stop` array such as `[
+  "<|im_end|>",
+  "<|im_start|>"
+]` when you need hard stop-word behavior. `llama-server` documents stop arrays for API usage; reverse prompts are for interactive mode.
 
 ---
 
