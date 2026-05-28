@@ -48,6 +48,8 @@ FLASH_ATTN="on"
 TEMPERATURE="0.20"
 TOP_K="20"
 MIN_P="0.05"
+REPEAT_PENALTY="1.15"
+REPEAT_LAST_N="128"
 
 LOG_DIR="$SCRIPT_DIR/../logs"
 
@@ -98,6 +100,12 @@ fi
 
 echo "Executable: $SERVER_EXE"
 echo "LD_LIBRARY_PATH: ${LD_LIBRARY_PATH:-}"
+echo "[Gillsystems] Terminating any existing llama-server instances..."
+pkill -f llama-server >/dev/null 2>&1 || true
+sleep 2
+pkill -9 -f llama-server >/dev/null 2>&1 || true
+echo "[Gillsystems] Waiting for Linux to release VRAM allocations..."
+sleep 2
 
 set +e
 "$SERVER_EXE" \
@@ -115,6 +123,8 @@ set +e
   --temperature "$TEMPERATURE" \
   --top-k "$TOP_K" \
   --min-p "$MIN_P" \
+    --repeat-penalty "$REPEAT_PENALTY" \
+    --repeat-last-n "$REPEAT_LAST_N" \
   -r "<|im_end|>" \
   -r "<|im_start|>" \
   --metrics \

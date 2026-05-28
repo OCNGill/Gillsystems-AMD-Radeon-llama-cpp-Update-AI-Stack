@@ -2,6 +2,11 @@
 echo Starting Gillsystems-Main LLM Server... LOCKED IN RADEON 7900XTX!
 cd /d "C:\Gillsystems\llama.cpp\bin\"
 
+echo [Gillsystems] Terminating any existing llama-server.exe instances...
+taskkill /F /T /IM llama-server.exe >nul 2>&1
+echo [Gillsystems] Waiting for Windows to release VRAM allocations...
+timeout /t 3 /nobreak >nul
+
 llama-server.exe ^
   -m "C:\Models\gemma-4-31B.Q4_K_M.gguf" ^
   -c 65536 ^
