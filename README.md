@@ -1,4 +1,4 @@
-<p align="center">
+﻿<p align="center">
   <img src="Gillsystems_logo_stuff/Gill%20Systems%20Logo.png" alt="Gill Systems Logo" width="800">
 </p>
 
@@ -10,11 +10,11 @@
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-lightgrey)](.)
 [![AMD GPU](https://img.shields.io/badge/GPU-AMD%20ROCm%2FHIP-red?logo=amd)](https://rocm.docs.amd.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Release-v2.0.0-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Release-v2.1.0-brightgreen)](CHANGELOG.md)
 
 **Gillsystems AI Stack Updater** is a portable, invocation-only Python agent that keeps your AMD consumer GPU AI stack — ROCm/HIP and llama.cpp — current on both Windows and Linux with a single command. No manual headaches. Reboot-resilient. Fully automated.
 
-**v2.0 milestone:** All Gillsystems nodes are live and validated. llama.cpp runs fully optimized on every AMD GPU in the fleet — from the RX 7900 XTX to the Steam Deck RDNA 2 APU — across KUbuntu and SteamOS. Production server launchers are included for every node.
+**v2.1 milestone:** Round 3 tuning brings Google-optimized execution baselines via Gemma 4 alignments. All nodes now run full 2048 logical batch prefilling against strictly locked 512 APU physical buffers. The fleet is now prepped for Instruction-Tuned (IT) variants and sovereign orchestration failover.
 - [Server Launchers](#server-launchers)
 - [Requirements](#requirements)
 - [CLI Reference](#cli-reference)
