@@ -2,22 +2,24 @@
 
 set -euo pipefail
 
-MODEL_PATH="/home/deck/Desktop/Models/gemma-4-E4B.Q6_K.gguf"
-SERVER_EXE="/home/deck/src/llama.cpp/bin/llama-server"
-LLAMA_LIB_DIR="/home/deck/src/llama.cpp/build-vulkan/bin"
-HOST="10.0.0.139"
-PORT="8013"
-CTX_SIZE="32768"
+MODEL_PATH="/home/gillsystems-htpc/Desktop/Models/gemma-4-E4B.Q6_K.gguf"
+SERVER_EXE="/home/gillsystems-htpc/src/llama.cpp/bin/llama-server"
+LLAMA_LIB_DIR="/home/gillsystems-htpc/src/llama.cpp/build-vulkan/bin"
+HOST="10.0.0.42"
+PORT="8011"
+CTX_SIZE="131072"
 BATCH_SIZE="2048"
 UBATCH_SIZE="512"
 GPU_LAYERS="99"
 PARALLEL_REQUESTS="1"
 FLASH_ATTN="on"
+
+# Google Authoritative Model Card Sampling Stack
 TEMPERATURE="1.0"
 TOP_K="64"
 TOP_P="0.95"
 
-echo "Starting Steam Deck AI Server..."
+echo "Starting Gillsystems HTPC AI Server..."
 echo "Model:   $MODEL_PATH"
 echo "Host:    $HOST:$PORT"
 echo "Context: $CTX_SIZE"
@@ -26,7 +28,7 @@ echo "Lib dir: $LLAMA_LIB_DIR"
 echo
 
 if [[ "${1:-}" == "--dry-run" ]]; then
-    echo "Dry run only. Command would launch the Steam Deck AI Server configuration above."
+    echo "Dry run only. Command would launch the HTPC AI Server configuration above."
     exit 0
 fi
 

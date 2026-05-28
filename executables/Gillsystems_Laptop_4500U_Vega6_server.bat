@@ -30,9 +30,9 @@ if not exist "%MODEL%" (
   --port 8012 ^
   --host 10.0.0.93 ^
   --context-shift ^
-  --temperature 0.20 ^
-  --top-k 20 ^
-  --min-p 0.05 ^
+  --temperature 1.0 ^
+  --top-k 64 ^
+  --top-p 0.95 ^
   -r "<|im_end|>,<|im_start|>" ^
   --metrics ^
   --no-mmap
