@@ -1,16 +1,46 @@
 #!/usr/bin/env bash
+# ============================================================
+# Gillsystems HTPC Server Launcher (Linux / Dedicated RX 7600)
+# Base Model Profile - 128K Context Max VRAM - Zero iGPU
+# ============================================================
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+resolve_node_name() {
+    local candidate=""
+
+    if [[ -n "${GILLSYSTEMS_NODE_NAME:-}" ]]; then
+        candidate="$GILLSYSTEMS_NODE_NAME"
+    elif [[ -n "${HOSTNAME:-}" ]]; then
+        candidate="$HOSTNAME"
+    elif command -v hostname >/dev/null 2>&1; then
+        candidate="$(hostname 2>/dev/null || true)"
+    elif [[ -x /usr/bin/hostname ]]; then
+        candidate="$(/usr/bin/hostname 2>/dev/null || true)"
+    elif [[ -r /etc/hostname ]]; then
+        candidate="$(tr -d '[:space:]' < /etc/hostname)"
+    elif command -v uname >/dev/null 2>&1; then
+        candidate="$(uname -n 2>/dev/null || true)"
+    elif [[ -x /usr/bin/uname ]]; then
+        candidate="$(/usr/bin/uname -n 2>/dev/null || true)"
+    fi
+
+    if [[ -z "$candidate" ]]; then
+        candidate="unknown-node"
+    fi
+
+    printf '%s\n' "$candidate"
+}
+
 MODEL_PATH="/home/gillsystems-htpc/Desktop/Models/gemma-4-E4B.Q6_K.gguf"
-SERVER_EXE="/home/gillsystems-htpc/src/llama.cpp/bin/llama-server"
-LLAMA_LIB_DIR="/home/gillsystems-htpc/src/llama.cpp/build-vulkan/bin"
 HOST="10.0.0.42"
 PORT="8011"
 CTX_SIZE="131072"
 BATCH_SIZE="2048"
 UBATCH_SIZE="512"
-GPU_LAYERS="99"
+GPU_LAYERS="99"  
 PARALLEL_REQUESTS="1"
 FLASH_ATTN="on"
 
@@ -19,26 +49,38 @@ TEMPERATURE="1.0"
 TOP_K="64"
 TOP_P="0.95"
 
-echo "Starting Gillsystems HTPC AI Server..."
+LOG_DIR="$SCRIPT_DIR/../logs"
+
+SERVER_EXE=""
+for candidate in \
+  "/home/gillsystems-htpc/src/llama.cpp/bin/llama-server" \
+  "/home/gillsystems-htpc/src/llama.cpp/build-hip/bin/llama-server" \
+  "/opt/gillsystems/llama.cpp/bin/llama-server"; do
+    if [[ -z "$SERVER_EXE" && -x "$candidate" ]]; then
+        SERVER_EXE="$candidate"
+    fi
+done
+
+mkdir -p "$LOG_DIR"
+
+TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
+NODE_NAME="$(resolve_node_name)"
+LOG_FILE="$LOG_DIR/server_${NODE_NAME}_${TIMESTAMP}.log"
+
+echo "Starting Gillsystems HTPC LLM Server... (Dedicated HIP Core)"
 echo "Model:   $MODEL_PATH"
 echo "Host:    $HOST:$PORT"
 echo "Context: $CTX_SIZE"
-echo "Binary:  $SERVER_EXE"
-echo "Lib dir: $LLAMA_LIB_DIR"
+echo "Log:     $LOG_FILE"
 echo
 
 if [[ "${1:-}" == "--dry-run" ]]; then
-    echo "Dry run only. Command would launch the HTPC AI Server configuration above."
+    echo "Dry run only. Command would launch the HTPC server configuration above."
     exit 0
 fi
 
-if [[ ! -x "$SERVER_EXE" ]]; then
-    echo "[Gillsystems] ERROR: Binary not found at $SERVER_EXE"
-    exit 1
-fi
-
-if [[ ! -d "$LLAMA_LIB_DIR" ]]; then
-    echo "[Gillsystems] ERROR: Library directory not found at $LLAMA_LIB_DIR"
+if [[ -z "$SERVER_EXE" ]]; then
+    echo "[Gillsystems] ERROR: llama-server executable was not found."
     exit 1
 fi
 
@@ -47,9 +89,18 @@ if [[ ! -f "$MODEL_PATH" ]]; then
     exit 1
 fi
 
-export LD_LIBRARY_PATH="$LLAMA_LIB_DIR:${LD_LIBRARY_PATH:-}"
+LLAMA_BIN_DIR="$(dirname "$SERVER_EXE")"
+LLAMA_LIB_DIR="/opt/gillsystems/llama.cpp/lib"
 
-exec "$SERVER_EXE" \
+if [[ -d "$LLAMA_LIB_DIR" ]]; then
+    export LD_LIBRARY_PATH="$LLAMA_LIB_DIR:${LD_LIBRARY_PATH:-}"
+fi
+
+echo "Executable: $SERVER_EXE"
+echo "LD_LIBRARY_PATH: ${LD_LIBRARY_PATH:-}"
+
+set +e
+"$SERVER_EXE" \
   -m "$MODEL_PATH" \
   -c "$CTX_SIZE" \
   -ngl "$GPU_LAYERS" \
@@ -66,4 +117,16 @@ exec "$SERVER_EXE" \
   --top-p "$TOP_P" \
   -r "<|im_end|>,<|im_start|>" \
   --metrics \
-  --no-mmap
+  --no-mmap 2>&1 | tee -a "$LOG_FILE"
+EXIT_CODE=${PIPESTATUS[0]}
+set -e
+
+echo
+if [[ $EXIT_CODE -eq 0 ]]; then
+    echo "[Gillsystems] Server exited cleanly."
+elif [[ $EXIT_CODE -eq 130 ]]; then
+    echo "[Gillsystems] Server cancelled by user."
+else
+    echo "[Gillsystems] ERROR: Server exited with code $EXIT_CODE"
+    echo "[Gillsystems] Review log: $LOG_FILE"
+fi
