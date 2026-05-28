@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# ============================================================
+# Gillsystems Steam Deck AI Server Launcher (Linux / Vulkan Backend)
+# Round 3 Tuning Profile - 32K Context Stabilized Baseline
+# ============================================================
 
 set -euo pipefail
 
@@ -13,9 +17,11 @@ UBATCH_SIZE="512"
 GPU_LAYERS="99"
 PARALLEL_REQUESTS="1"
 FLASH_ATTN="on"
-TEMPERATURE="1.0"
-TOP_K="64"
-TOP_P="0.95"
+
+# Google Authoritative Model Card Sampling Stack
+TEMPERATURE="0.20"
+TOP_K="20"
+MIN_P="0.05"
 
 echo "Starting Steam Deck AI Server..."
 echo "Model:   $MODEL_PATH"
@@ -61,7 +67,8 @@ exec "$SERVER_EXE" \
   --context-shift \
   --temperature "$TEMPERATURE" \
   --top-k "$TOP_K" \
-  --top-p "$TOP_P" \
-  -r "<|im_end|>,<|im_start|>" \
+  --min-p "$MIN_P" \
+  -r "<|im_end|>" \
+  -r "<|im_start|>" \
   --metrics \
   --no-mmap
