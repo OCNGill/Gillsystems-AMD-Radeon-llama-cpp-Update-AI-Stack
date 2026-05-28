@@ -77,7 +77,7 @@ def test_production_launchers_use_deterministic_google_tuned_profile() -> None:
 
 def test_production_launchers_support_model_path_overrides() -> None:
     expected_markers = {
-        "executables/Gillsystems_Main_AI_Server.bat": ("GILLSYSTEMS_MAIN_MODEL_PATH", "Working_Models"),
+        "executables/Gillsystems_Main_AI_Server.bat": ("GILLSYSTEMS_MAIN_MODEL_PATH", 'C:\\Models\\%MODEL_FILENAME%', 'for /r "C:\\Models"'),
         "executables/Gillsystems-HTPC-AI-server.sh": ("GILLSYSTEMS_HTPC_MODEL_PATH",),
         "executables/Gillsystems_Laptop_4500U_Vega6_server.bat": ("GILLSYSTEMS_LAPTOP_MODEL_PATH",),
         "executables/Gillsystems_SteamDeck_AI_Server.sh": ("GILLSYSTEMS_STEAMDECK_MODEL_PATH",),
@@ -97,3 +97,4 @@ def test_main_launcher_keeps_a_debug_window_open_and_stringifies_errors() -> Non
     assert "--gillsystems-main-child-window" in launcher_text
     assert "ForEach-Object { $_.ToString() }" in launcher_text
     assert "UNHANDLED POWERSHELL ERROR" in launcher_text
+    assert 'if exist "%%~fP" set "MODEL_PATH=%%~fP"' in launcher_text

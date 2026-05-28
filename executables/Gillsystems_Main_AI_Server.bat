@@ -18,18 +18,24 @@ set "MODEL_PATH="
 if defined GILLSYSTEMS_MAIN_MODEL_PATH (
   set "MODEL_PATH=%GILLSYSTEMS_MAIN_MODEL_PATH%"
 ) else (
-  for %%P in (
-    "C:\Models\Working_Models\%MODEL_FILENAME%"
-    "%USERPROFILE%\Desktop\Models\Working_Models\%MODEL_FILENAME%"
-    "C:\Models\%MODEL_FILENAME%"
-    "%USERPROFILE%\Desktop\Models\%MODEL_FILENAME%"
-    "%USERPROFILE%\Downloads\%MODEL_FILENAME%"
-  ) do (
-    if not defined MODEL_PATH if exist "%%~P" set "MODEL_PATH=%%~P"
+  if exist "C:\Models\%MODEL_FILENAME%" set "MODEL_PATH=C:\Models\%MODEL_FILENAME%"
+  if not defined MODEL_PATH if exist "%USERPROFILE%\Desktop\Models\%MODEL_FILENAME%" set "MODEL_PATH=%USERPROFILE%\Desktop\Models\%MODEL_FILENAME%"
+  if not defined MODEL_PATH if exist "%USERPROFILE%\Downloads\%MODEL_FILENAME%" set "MODEL_PATH=%USERPROFILE%\Downloads\%MODEL_FILENAME%"
+
+  if not defined MODEL_PATH if exist "C:\Models" (
+    for /r "C:\Models" %%P in ("%MODEL_FILENAME%") do (
+      if not defined MODEL_PATH if exist "%%~fP" set "MODEL_PATH=%%~fP"
+    )
+  )
+
+  if not defined MODEL_PATH if exist "%USERPROFILE%\Desktop\Models" (
+    for /r "%USERPROFILE%\Desktop\Models" %%P in ("%MODEL_FILENAME%") do (
+      if not defined MODEL_PATH if exist "%%~fP" set "MODEL_PATH=%%~fP"
+    )
   )
 )
 
-if not defined MODEL_PATH set "MODEL_PATH=C:\Models\Working_Models\%MODEL_FILENAME%"
+if not defined MODEL_PATH set "MODEL_PATH=C:\Models\%MODEL_FILENAME%"
 set "HOST=10.0.0.164"
 set "PORT=8010"
 set "CTX_SIZE=49152"
@@ -97,6 +103,8 @@ if not exist "%SERVER_EXE%" (
 
 if not exist "%MODEL_PATH%" (
   echo [Gillsystems] ERROR: Model not found at "%MODEL_PATH%"
+  echo [Gillsystems] Expected exact path first: "C:\Models\%MODEL_FILENAME%"
+  echo [Gillsystems] Also searched recursively under: "C:\Models"
   echo [Gillsystems] Set GILLSYSTEMS_MAIN_MODEL_PATH to override the detected model path.
   pause
   exit /b 1
