@@ -59,7 +59,7 @@ def test_main_launcher_uses_google_sampling_profile() -> None:
     assert '--temperature 1.0 ^' in launcher_text
     assert '--top-k 64 ^' in launcher_text
     assert '--top-p 0.95 ^' in launcher_text
-    assert '--min-p 0.05 ^' in launcher_text
+    assert '--min-p' not in launcher_text, 'min_p is not in Google Gemma 4 official sampling spec'
     assert '--reasoning-format none ^' in launcher_text
     assert '--repeat-penalty 1.15 ^' in launcher_text
     assert '--repeat-last-n 128 ^' in launcher_text
