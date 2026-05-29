@@ -6,6 +6,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.3.0] — 2026-05-28 — Main Node Custom Jinja Persona and Process Priority
+
+### Added
+
+- **Custom Jinja chat template for main node:** Created `C:\Gillsystems\llama.cpp\bin\gillsystems_gemma4.jinja` hardcoding the core system persona to prevent ChatML token boundary drift. Template enforces architectural precision and eliminates generic placeholder text, third-party documentation templates, or default model references.
+- **Windows high-priority process scheduling:** Added `--prio 2` flag to main launcher, elevating llama-server.exe to HIGH_PRIORITY_CLASS. Ensures consistent GPU scheduling and latency isolation against system background tasks.
+
+### Changed
+
+- **Main launcher processes custom Jinja template:** Updated `executables/Gillsystems_Main_AI_Server.bat` to reference `--chat-template-file "%JINJA_FILE%"` instead of embedded model metadata template. Inline system prompt hardcoding prevents downstream routing confusion on multi-node topology queries.
+- **Upstream port launch command:** Both dry-run echo and live launch block now use custom template file reference. Unified parameter set across both execution paths for consistency.
+
+### Technical Details
+
+- **Jinja template location:** `C:\Gillsystems\llama.cpp\bin\gillsystems_gemma4.jinja`
+- **System prompt scope:** Declares main node as core intelligence layer with 24GB Radeon 7900 XTX hardware, local cluster mastery, and architectural precision mandate.
+- **Parameters added:** `--chat-template-file "%JINJA_FILE%"`, `--prio 2` to both dry-run and live execution paths.
+
 ## [2.2.0] — 2026-05-28 — Round 5 Main Launcher Optimization
 
 ### Changed
