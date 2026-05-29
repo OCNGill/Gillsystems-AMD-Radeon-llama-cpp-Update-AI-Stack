@@ -10,11 +10,23 @@ set "PUBLIC_PORT=8010"
 set "UPSTREAM_HOST=127.0.0.1"
 set "UPSTREAM_PORT=18010"
 set "PROXY_SCRIPT=%REPO_ROOT%\scripts\llama_json_proxy.py"
-set "PYTHON_EXE=%REPO_ROOT%\.venv\Scripts\python.exe"
+set "PYTHON_EXE="
+set "PYTHON_ARGS="
 set "PROXY_PID_FILE=%LOG_DIR%\%NODE_PREFIX%_proxy.pid"
 
 if defined GILLSYSTEMS_MAIN_MODEL_PATH set "MODEL_PATH=%GILLSYSTEMS_MAIN_MODEL_PATH%"
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
+if defined GILLSYSTEMS_MAIN_PYTHON set "PYTHON_EXE=%GILLSYSTEMS_MAIN_PYTHON%"
+if not defined PYTHON_EXE if exist "%REPO_ROOT%\.venv\Scripts\python.exe" set "PYTHON_EXE=%REPO_ROOT%\.venv\Scripts\python.exe"
+if not defined PYTHON_EXE (
+  for /f "delims=" %%I in ('where python.exe 2^>nul') do if not defined PYTHON_EXE set "PYTHON_EXE=%%I"
+)
+if not defined PYTHON_EXE (
+  for /f "delims=" %%I in ('where py.exe 2^>nul') do if not defined PYTHON_EXE (
+    set "PYTHON_EXE=%%I"
+    set "PYTHON_ARGS=-3"
+  )
+)
 
 for /f %%I in ('powershell -NoProfile -Command "(Get-Date).ToString('yyyy-MM-dd_HH-mm-ss')"') do set "TIMESTAMP=%%I"
 set "SERVER_LOG=%LOG_DIR%\server_%COMPUTERNAME%_%TIMESTAMP%.log"
@@ -25,12 +37,13 @@ cd /d "C:\Gillsystems\llama.cpp\bin\"
 if /I "%~1"=="--dry-run" (
   echo Binary:  C:\Gillsystems\llama.cpp\bin\llama-server.exe
   echo Model:   %MODEL_PATH%
+  echo Python:  %PYTHON_EXE% %PYTHON_ARGS%
   echo Host:    %PUBLIC_HOST%:%PUBLIC_PORT%
   echo Context: 49152
   echo Logs:    %LOG_DIR%
   echo.
   echo JSON Export Command:
-  echo   "%PYTHON_EXE%" "%PROXY_SCRIPT%" --listen-host %PUBLIC_HOST% --listen-port %PUBLIC_PORT% --upstream-host %UPSTREAM_HOST% --upstream-port %UPSTREAM_PORT% --logs-dir "%LOG_DIR%" --node-prefix %NODE_PREFIX% --pid-file "%PROXY_PID_FILE%"
+  echo   "%PYTHON_EXE%" %PYTHON_ARGS% "%PROXY_SCRIPT%" --listen-host %PUBLIC_HOST% --listen-port %PUBLIC_PORT% --upstream-host %UPSTREAM_HOST% --upstream-port %UPSTREAM_PORT% --logs-dir "%LOG_DIR%" --node-prefix %NODE_PREFIX% --pid-file "%PROXY_PID_FILE%"
   echo.
   echo Launch Command:
   echo   llama-server.exe -m "%MODEL_PATH%" -c 49152 -n 2048 -ngl 99 -fa on -np 1 -b 2048 -ub 512 --port %UPSTREAM_PORT% --host %UPSTREAM_HOST% --temperature 1.0 --top-k 64 --top-p 0.95 --min-p 0.05 --reasoning-format none --jinja --chat-template gemma --context-shift --repeat-penalty 1.15 --repeat-last-n 128 --ui-config "{\"chatFormat\":\"auto\"}" --log-file "%SERVER_LOG%" --log-timestamps --metrics --no-mmap
@@ -49,8 +62,15 @@ if not exist "%MODEL_PATH%" (
   exit /b 1
 )
 
-if not exist "%PYTHON_EXE%" (
-  echo [Gillsystems] ERROR: Python launcher not found at "%PYTHON_EXE%"
+if not defined PYTHON_EXE (
+  echo [Gillsystems] ERROR: Python 3 was not found. Install Python or set GILLSYSTEMS_MAIN_PYTHON.
+  pause
+  exit /b 1
+)
+
+"%PYTHON_EXE%" %PYTHON_ARGS% --version >nul 2>&1
+if errorlevel 1 (
+  echo [Gillsystems] ERROR: Python launcher failed: "%PYTHON_EXE%" %PYTHON_ARGS%
   pause
   exit /b 1
 )
@@ -66,7 +86,7 @@ if exist "%PROXY_PID_FILE%" (
   del "%PROXY_PID_FILE%" >nul 2>&1
 )
 
-start "Gillsystems-Main JSON Export" /min "%COMSPEC%" /c ""%PYTHON_EXE%" "%PROXY_SCRIPT%" --listen-host %PUBLIC_HOST% --listen-port %PUBLIC_PORT% --upstream-host %UPSTREAM_HOST% --upstream-port %UPSTREAM_PORT% --logs-dir "%LOG_DIR%" --node-prefix %NODE_PREFIX% --pid-file "%PROXY_PID_FILE%""
+start "Gillsystems-Main JSON Export" /min "%COMSPEC%" /c ""%PYTHON_EXE%" %PYTHON_ARGS% "%PROXY_SCRIPT%" --listen-host %PUBLIC_HOST% --listen-port %PUBLIC_PORT% --upstream-host %UPSTREAM_HOST% --upstream-port %UPSTREAM_PORT% --logs-dir "%LOG_DIR%" --node-prefix %NODE_PREFIX% --pid-file "%PROXY_PID_FILE%""
 timeout /t 2 /nobreak >nul
 
 if not exist "%PROXY_PID_FILE%" (

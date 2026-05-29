@@ -72,6 +72,16 @@ def test_main_launcher_supports_fixed_main_path_and_override() -> None:
     assert 'GILLSYSTEMS_MAIN_MODEL_PATH' in launcher_text
 
 
+def test_main_launcher_resolves_python_without_repo_venv() -> None:
+    launcher_text = _read_workspace_file("executables/Gillsystems_Main_AI_Server.bat")
+
+    assert 'GILLSYSTEMS_MAIN_PYTHON' in launcher_text
+    assert 'if not defined PYTHON_EXE if exist "%REPO_ROOT%\\.venv\\Scripts\\python.exe" set "PYTHON_EXE=%REPO_ROOT%\\.venv\\Scripts\\python.exe"' in launcher_text
+    assert "where python.exe" in launcher_text
+    assert "where py.exe" in launcher_text
+    assert '"%PYTHON_EXE%" %PYTHON_ARGS% --version >nul 2>&1' in launcher_text
+
+
 def test_main_launcher_uses_json_export_proxy_with_main_prefix() -> None:
     launcher_text = _read_workspace_file("executables/Gillsystems_Main_AI_Server.bat")
     proxy_text = _read_workspace_file("scripts/llama_json_proxy.py")
