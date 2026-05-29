@@ -10,11 +10,11 @@
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-lightgrey)](.)
 [![AMD GPU](https://img.shields.io/badge/GPU-AMD%20ROCm%2FHIP-red?logo=amd)](https://rocm.docs.amd.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Release-v2.3.0-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Release-v2.4.0-brightgreen)](CHANGELOG.md)
 
 **Gillsystems AI Stack Updater** is a portable, invocation-only Python agent that keeps your AMD consumer GPU AI stack — ROCm/HIP and llama.cpp — current on both Windows and Linux with a single command. No manual headaches. Reboot-resilient. Fully automated.
 
-**Status note:** The attached round 3 cluster verification logs showed that launcher behavior had drifted: outputs were uncapped, stop handling was incorrect for API usage, and the fleet was no longer consistent. Round 4 corrects the production launchers with explicit Gemma template alignment, bounded generation, runtime path resolution, and root log capture before the same verification prompt is rerun.
+**Status note:** Round 6 is complete — all 4 production launcher bugs fixed. The critical Main Rig crash (non-existent Jinja file via `--chat-template-file`) is resolved. HTPC's broken bash continuation, missing `--repeat-penalty`/`--repeat-last-n` on all nodes, and missing `-b`/`-ub` on HTPC are all corrected. 12/12 tests pass. See [`documentation/Gemma4_tuning_31_and_E4B.md`](documentation/Gemma4_tuning_31_and_E4B.md) for the centralized engineering reference.
 - [Server Launchers](#server-launchers)
 - [Requirements](#requirements)
 - [CLI Reference](#cli-reference)
@@ -134,7 +134,7 @@ python -m src.main --check-only
 
 ## Server Launchers
 
-Round 4 re-stabilizes the production launchers around the real `llama-server` runtime contract: explicit Gemma chat-template usage, deterministic Google-tuned decode controls, node-aware model path resolution, bounded default generation, and log capture under the repo root.
+Round 6 completes a full audit and fix of all 4 production launchers. See [`documentation/Gemma4_tuning_31_and_E4B.md`](documentation/Gemma4_tuning_31_and_E4B.md) for the authoritative per-node flag matrix and engineering history.
 
 | Launcher | Node | OS | Model | Backend | Context | Default max output |
 |---|---|---|---|---|---|---|
@@ -145,8 +145,9 @@ Round 4 re-stabilizes the production launchers around the real `llama-server` ru
 | `executables/Gillsystems_server_edit_per_node.bat` / `.sh` | Any | Both | edit me | edit me | edit me | edit me |
 
 **All production launchers now:**
-- Use `--jinja` with `--chat-template gemma`
-- Use the deterministic cluster decode profile: `--temperature 0 --min-p 0.05 --top-k 20 --top-p 1.0`
+- Use `--jinja` with `--chat-template gemma` (Main Rig included as of Round 6 — no external Jinja file)
+- Use the Google-native decode profile: `--temperature 1.0 --top-k 64 --top-p 0.95 --min-p 0.05`
+- Pass `--repeat-penalty 1.15 --repeat-last-n 128` (anti-loop mechanism, active as of Round 6)
 - Keep `-b 2048`, `-ub 512`, `--context-shift`, `--metrics`, and `--no-mmap`
 - Write launch logs into the repo-root `logs/` directory
 - Cap default generation length with `-n` so missing client-side `max_tokens` can no longer run unbounded
@@ -158,7 +159,7 @@ Round 4 re-stabilizes the production launchers around the real `llama-server` ru
   "<|im_start|>"
 ]` when you need hard stop-word behavior. `llama-server` documents stop arrays for API completions; reverse prompts are for interactive mode.
 
-**Main notes:** The main launcher keeps the Dense 31B model as the highest-quality node, prefers the canonical `C:\Models\Working_Models\` root, accepts `GILLSYSTEMS_MAIN_MODEL_PATH` as an override, and resolves portable rocBLAS support files when present.
+**Main notes:** The main launcher keeps the Dense 31B model as the highest-quality node, prefers the canonical `C:\Models\Working_Models\` root, accepts `GILLSYSTEMS_MAIN_MODEL_PATH` as an override, and resolves portable rocBLAS support files when present. As of Round 6, uses `--chat-template gemma` (GGUF-embedded template) — the `--chat-template-file` Jinja file that caused crash-on-startup has been removed.
 
 **HTPC notes:** The HTPC launcher resolves its executable, shared-library directory, and optional `ROCBLAS_TENSILE_LIBPATH` as a coherent runtime set.
 

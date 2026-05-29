@@ -1,10 +1,10 @@
-﻿<p align="center">
+<p align="center">
   <img src="Gillsystems_logo_stuff/Gill%20Systems%20Logo.png" alt="Gill Systems Logo" width="800">
 </p>
 
-# User Guide: Gillsystems AI Stack Updater Agent v2.3.0
+# User Guide: Gillsystems AI Stack Updater Agent v2.4.0
 
-> **v2.3.0 — ROUND 4 STABILIZATION.** The attached round 3 logs showed launcher drift under the shared verification prompt. The production launchers now enforce explicit Gemma chat-template alignment, bounded default output, proper runtime path resolution, and root log capture before the same prompt is rerun.
+> **v2.4.0 — ROUND 6 LAUNCHER REFACTORING.** All 4 production launcher bugs fixed: Main Rig `--chat-template-file` crash (replaced with `--chat-template gemma`), HTPC broken bash continuation (blank line removed), `--repeat-penalty`/`--repeat-last-n` now actually passed to all 4 nodes, `-b`/`-ub` batch flags added to HTPC. 12/12 tests pass. Engineering reference consolidated in [`documentation/Gemma4_tuning_31_and_E4B.md`](documentation/Gemma4_tuning_31_and_E4B.md). See [`documentation/roos_first_auto_iteration.md`](documentation/roos_first_auto_iteration.md) for the full autonomous iteration report.
 
 ## 📌 Getting Started
 
@@ -32,7 +32,7 @@ You can also run `bash ./update-ai-stack.sh --check-env` once to validate the Li
 
 ### Server Launchers — Production Node Configuration
 
-Round 4 keeps dedicated launchers for every Gillsystems node, but corrects the operational contract that broke round 3: no more fake reverse-prompt stop handling, no more unbounded default output, and no more stale file references.
+Round 6 fixes 4 bugs across the cluster launchers. For the full engineering history and per-node flag matrix, see [`documentation/Gemma4_tuning_31_and_E4B.md`](documentation/Gemma4_tuning_31_and_E4B.md). For the autonomous bug-discovery report, see [`documentation/roos_first_auto_iteration.md`](documentation/roos_first_auto_iteration.md).
 
 **Main Rig (RX 7900 XTX / gfx1100 — HIP/ROCm, Tier 1):**
 ```bat
@@ -42,7 +42,8 @@ executables/Gillsystems_Main_AI_Server.bat
 - Model path resolution: prefers `C:\Models\Working_Models\gemma-4-31B.Q4_K_M.gguf`; override with `GILLSYSTEMS_MAIN_MODEL_PATH`
 - Context: 49 152 tokens
 - Default output cap: 2 048 tokens
-- Gemma alignment: `--jinja` + `--chat-template gemma`
+- Gemma alignment: `--jinja` + `--chat-template gemma` (no external Jinja file — uses GGUF-embedded template)
+- Repeat penalty: `--repeat-penalty 1.15 --repeat-last-n 128` (anti-loop mechanism, active as of Round 6)
 - Logging: root `logs/` capture via PowerShell `Tee-Object`
 
 **KUbuntu HTPC (RX 7600 / gfx1102 — ROCm/HIP, Tier 1):**
@@ -78,7 +79,7 @@ executables/Gillsystems_server_edit_per_node.bat
 executables/Gillsystems_server_edit_per_node.sh
 ```
 
-All production launchers use the deterministic cluster sampler (`temperature 0`, `min-p 0.05`, `top-k 20`, `top-p 1.0`), plus `--jinja`, `--chat-template gemma`, `--context-shift`, `--metrics`, and `--no-mmap`.
+All production launchers now use the Google-native sampling profile (`--temperature 1.0`, `--top-k 64`, `--top-p 0.95`, `--min-p 0.05`), plus `--repeat-penalty 1.15 --repeat-last-n 128`, `--jinja`, `--chat-template gemma` (Main Rig included as of Round 6), `--context-shift`, `--metrics`, and `--no-mmap`. All nodes pass `-b 2048 -ub 512`. See [`documentation/Gemma4_tuning_31_and_E4B.md`](documentation/Gemma4_tuning_31_and_E4B.md) for the complete per-node flag matrix.
 
 For OpenAI-compatible chat clients, send an explicit `stop` array such as `[
   "<|im_end|>",

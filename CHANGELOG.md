@@ -6,6 +6,40 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.4.0] — 2026-05-29 — Round 6 Launcher Refactoring — Jinja Template Fix & Missing Flags Resolution
+
+### Fixed
+
+**4 bugs fixed across the cluster:**
+
+- **🔴 Main Rig:** `--chat-template-file` referenced non-existent `gillsystems_gemma4.jinja` file. Replaced with `--chat-template gemma` (GGUF-embedded template).
+- **🔴 HTPC:** Blank line inside bash backslash continuation chain silently dropped `--metrics` and `--no-mmap` flags.
+- **🟡 All 4 nodes:** `--repeat-penalty`/`--repeat-last-n` defined in variables since Round 2 but never passed to the server binary. Anti-loop mechanism was non-functional.
+- **🟡 HTPC:** `-b`/`-ub` batch flags defined but never passed to the server.
+
+### Added
+
+- **New file:** `documentation/Gemma4_tuning_31_and_E4B.md` — centralized engineering reference with upstream links, per-node config matrix, full round history, and known-issues registry.
+- **New file:** `documentation/roos_first_auto_iteration.md` — autonomous iteration report documenting the full bug discovery → fix → verify cycle.
+- **New file:** `plans/round-6-launcher-refactor-plan.md` — architectural plan covering all 4 bugs, test strategy, and deployment sequence.
+
+### Changed
+
+- **Main launcher** (`Gillsystems_Main_AI_Server.bat`): Removed `JINJA_FILE` variable and `--chat-template-file` flag. Now uses `--chat-template gemma` like the rest of the fleet. Added `--repeat-penalty 1.15 --repeat-last-n 128`.
+- **HTPC launcher** (`Gillsystems-HTPC-AI-server.sh`): Removed blank line breaking bash continuation chain. Added `-b 2048 -ub 512` flags. Added `--repeat-penalty 1.15 --repeat-last-n 128`.
+- **Laptop launcher** (`Gillsystems_Laptop_4500U_Vega6_server.bat`): Added `-b`/`-ub` flags to PowerShell launch block. Added `--repeat-penalty`/`--repeat-last-n`.
+- **Steam Deck launcher** (`Gillsystems_SteamDeck_AI_Server.sh`): Added `-b`/`-ub` flags. Added `--repeat-penalty`/`--repeat-last-n`.
+
+### Tests
+
+- **3 new tests** in `tests/test_server_launchers.py`: batch/ubatch presence, repeat-penalty presence, broken-continuation detection.
+- **Result:** 12/12 passed — dry-run verified on Main Rig and Laptop; bash syntax verified on HTPC and Steam Deck.
+
+**Files modified:** `Gillsystems_Main_AI_Server.bat`, `Gillsystems-HTPC-AI-server.sh`, `Gillsystems_Laptop_4500U_Vega6_server.bat`, `Gillsystems_SteamDeck_AI_Server.sh`, `tests/test_server_launchers.py`
+**Files created:** `documentation/Gemma4_tuning_31_and_E4B.md`, `documentation/roos_first_auto_iteration.md`, `plans/round-6-launcher-refactor-plan.md`
+
+---
+
 ## [2.3.0] — 2026-05-28 — Main Node Custom Jinja Persona and Process Priority
 
 ### Added
