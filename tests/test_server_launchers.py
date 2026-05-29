@@ -21,9 +21,18 @@ def test_production_launchers_use_gemma_chat_template() -> None:
     for relative_path in PRODUCTION_LAUNCHERS:
         launcher_text = _read_workspace_file(relative_path)
 
-        assert "--chat-template" in launcher_text, relative_path
         assert "gemma" in launcher_text, relative_path
         assert "--jinja" in launcher_text, relative_path
+
+    main_text = _read_workspace_file("executables/Gillsystems_Main_AI_Server.bat")
+    assert "--chat-template gemma" not in main_text
+
+    for relative_path in PRODUCTION_LAUNCHERS:
+        if relative_path == "executables/Gillsystems_Main_AI_Server.bat":
+            continue
+
+        launcher_text = _read_workspace_file(relative_path)
+        assert "--chat-template" in launcher_text, relative_path
 
 
 def test_production_launchers_cap_generation_length() -> None:
@@ -61,7 +70,7 @@ def test_main_launcher_uses_google_sampling_profile() -> None:
     assert '--top-p 0.95 ^' in launcher_text
     assert '--min-p 0.05 ^' in launcher_text
     assert '--reasoning-format none ^' in launcher_text
-    assert '--chat-template gemma ^' in launcher_text
+    assert '--chat-template gemma ^' not in launcher_text
     assert '--context-shift ^' in launcher_text
 
 

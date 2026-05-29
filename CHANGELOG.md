@@ -6,51 +6,34 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Unreleased] — 2026-05-28 — Round 4 Launcher Stabilization
+## [2.2.0] — 2026-05-28 — Round 5 Main Launcher Optimization
 
 ### Changed
 
-- **Round 3 regression acknowledged:** The attached cluster verification logs showed that the round 3 launcher set was not stable under the shared validation prompt. This repo now treats round 4 as the corrective launcher pass rather than claiming round 3 was production-complete.
-- **Production launcher contract tightened:** All four production launchers now use explicit Gemma chat-template alignment, the deterministic cluster decode profile (`--temperature 0 --min-p 0.05 --top-k 20 --top-p 1.0`), capped default generation lengths, better runtime path resolution, and root `logs/` capture.
-- **Main launcher path bug fixed:** The Main Windows launcher now prefers the canonical `C:\Models\Working_Models\` root and supports `GILLSYSTEMS_MAIN_MODEL_PATH` instead of assuming a single broken model path.
-- **Reverse prompt stop hack removed:** The production launchers no longer rely on `-r "<|im_end|>,<|im_start|>"` as if it were an API stop mechanism. The upstream `llama-server` docs reserve reverse prompts for interactive mode.
+- **Main launcher `--chat-template` removed:** The Gemma 4 31B GGUF (`gemma-4-31B.Q4_K_M.gguf`) embeds its own Jinja ChatML template in its model metadata. Supplying `--chat-template gemma` was causing token boundary drift and double-formatting on the 31B model. Flag removed from the main launcher only; edge-node launchers (E4B quantizations) retain it as their GGUFs require the explicit override.
+- **`--repeat-penalty` removed from all launchers:** Repeat-penalty was producing `<unused53>` tokens and Java-fragment hallucinations. All four production launchers now rely on the Google sampling profile (`temperature=1.0 / top-k=64 / top-p=0.95 / min-p=0.05`) without a repeat-penalty multiplier.
+- **Sampling profile corrected to Google-native values:** All four launchers align to `--temperature 1.0 --top-k 64 --top-p 0.95 --min-p 0.05`. Prior rounds had oscillated between `temperature=0` (deterministic lockout) and incorrect `top-k=20` (overly narrow sampling).
+- **`--chat-template gemma` and `--context-shift` restored to edge-node launchers:** An intermediate commit had stripped both flags from the cluster. Round 5 restores them on HTPC, Laptop, and Steam Deck launchers where they are required.
+- **Round 3 regression acknowledged:** Cluster verification logs confirmed the round 3 launcher set was unstable under the shared validation prompt. Rounds 4 and 5 are the corrective passes.
+- **Reverse prompt stop hack removed:** The production launchers no longer rely on `-r "<|im_end|>,<|im_start|>"` as an API stop mechanism.
 
 ### Added
 
+- **KV-cache quantization on main launcher:** Added `--cache-type-k q8_0`, `--cache-type-v q8_0`, and `--cache-ram 0` to the main Windows launcher. Gemma 4 31B at 49 152-token context overflows 24 GB VRAM with FP16 KV cache; q8_0 quantization contains peak VRAM usage and the `--cache-ram 0` flag prevents GTT fallback paging.
+- **Round 5 cluster verification protocol:** `documentation/round-5-cluster-verification-protocol.md` documents the current production-stable parameter set for re-running the standard cluster validation prompt.
+- **Launcher regression tests:** `tests/test_server_launchers.py` enforces the launcher asymmetry — `--chat-template gemma` must be absent from the main launcher and present in all three edge-node launchers. Also asserts KV-cache flags and Google sampling profile on the main launcher.
 - **Round 4 analysis artifact:** `documentation/round-4-launcher-stabilization.md` captures the 10-expert review panel, per-node vote outcomes, upstream references, and the executed correction set.
-- **Launcher regression tests:** `tests/test_server_launchers.py` statically enforces Gemma template usage, default output caps, removal of the reverse-prompt workaround, and preservation of core runtime safeguards.
 
-### Validation Prompt
+### Current Production Launcher Profiles
 
-Round 4 intentionally reuses the same prompt that exposed the round 3 failure:
+| Node | Model | Context | KV Cache | Chat Template |
+|------|-------|---------|----------|---------------|
+| Main (RX 7900 XTX) | `gemma-4-31B.Q4_K_M.gguf` | 49 152 | q8_0 + `--cache-ram 0` | embedded (no override) |
+| HTPC (RX 7600) | `gemma-4-E4B.Q6_K.gguf` | 32 768 | FP16 default | `--chat-template gemma` |
+| Laptop (Vega 6) | `gemma-4-E4B.Q6_K.gguf` | 8 192 | FP16 default | `--chat-template gemma` |
+| Steam Deck (RDNA 2) | `gemma-4-E4B.Q6_K.gguf` | 32 768 | FP16 default | `--chat-template gemma` |
 
-```markdown
-## Gillsystems Cluster Verification Protocol: Round 3
-
-## Hardware Footprint: Distributed Computing Stack Alignment
-
-### 1. Ingestion Profiling Matrix
-
-[Initialize an exhaustive processing chain to verify node stability under the Google-tuned sampling baselines. The following configuration array must be parsed without generating recursive token replication patterns or encountering memory heap allocation crashes.]
-
-### 2. Parameter Tuning Verification Bounds
-
-* Logical Execution Batch Size: -b 2048 (Prefill Parallelization Boundary)
-* Physical Multi-Batch Chunking Size: -ub 512 (APU Compute Alignment Layer)
-* Filter Selection Cut-offs: --min-p 0.05 | --top-k 20 (Google-Optimized Baseline)
-* Core Tracking Flags: --metrics | --no-mmap | --context-shift (Static Ring Tracking)
-
-### 3. Distributed Compute System Architecture Mapping
-
-**Task:** Generate a structural blueprint and definitive analysis mapping the operational topology, structural communication vectors, node role distribution, load balancing parameters, and single-point-of-failure vulnerabilities for the following host network map:
-
-* **Main Rig:** `10.0.0.164:8010` (Primary Orchestrator)
-* **HTPC Node:** `10.0.0.42:8011` (High-Precision Processing Edge)
-* **Laptop Node:** `10.0.0.93:8012` (Telemetry / Sync Worker)
-* **Steam Deck:** `10.0.0.139:8013` (Local Validation Node)
-
-**Output Requirement:** Deliver a detailed processing report containing an ingestion matrix, parameter check, structural text diagram, and step-by-step role distribution layout. Output must be structured, deterministic, and complete. Do not truncate.
-```
+All nodes: `--jinja --reasoning-format none --context-shift --metrics --no-mmap`
 
 ## [2.1.0] — 2026-05-27 — Round 3 Executable Tuning (Google-Tuned Baseline) & Pre-IT Variants
 
