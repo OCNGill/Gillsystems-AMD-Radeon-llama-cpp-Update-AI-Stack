@@ -2,9 +2,9 @@
   <img src="Gillsystems_logo_stuff/Gill%20Systems%20Logo.png" alt="Gill Systems Logo" width="800">
 </p>
 
-# User Guide: Gillsystems AI Stack Updater Agent v2.1
+# User Guide: Gillsystems AI Stack Updater Agent v2.3.0
 
-> **v2.1 — ROUND 4 STABILIZATION.** The attached round 3 logs showed launcher drift under the shared verification prompt. The production launchers now enforce explicit Gemma chat-template alignment, bounded default output, proper runtime path resolution, and root log capture before the same prompt is rerun.
+> **v2.3.0 — ROUND 4 STABILIZATION.** The attached round 3 logs showed launcher drift under the shared verification prompt. The production launchers now enforce explicit Gemma chat-template alignment, bounded default output, proper runtime path resolution, and root log capture before the same prompt is rerun.
 
 ## 📌 Getting Started
 
