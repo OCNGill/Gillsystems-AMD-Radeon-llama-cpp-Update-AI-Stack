@@ -31,14 +31,13 @@ set "PARALLEL_REQUESTS=1"
 set "FLASH_ATTN=on"
 set "BATCH_SIZE=2048"
 set "UBATCH_SIZE=512"
-set "CHAT_TEMPLATE=gemma"
 set "USE_HIP_UMA=1"
 
-:: Deterministic Google-tuned baseline
-set "TEMPERATURE=0"
+:: Google Gemma 4 IT sampling baseline (temperature=1.0, top_p=0.95, top_k=64)
+set "TEMPERATURE=1.0"
 set "MIN_P=0.05"
-set "TOP_K=20"
-set "TOP_P=1.0"
+set "TOP_K=64"
+set "TOP_P=0.95"
 set "REPEAT_PENALTY=1.15"
 set "REPEAT_LAST_N=128"
 
@@ -109,7 +108,6 @@ set "GS_PARALLEL_REQUESTS=%PARALLEL_REQUESTS%"
 set "GS_FLASH_ATTN=%FLASH_ATTN%"
 set "GS_BATCH_SIZE=%BATCH_SIZE%"
 set "GS_UBATCH_SIZE=%UBATCH_SIZE%"
-set "GS_CHAT_TEMPLATE=%CHAT_TEMPLATE%"
 set "GS_TEMPERATURE=%TEMPERATURE%"
 set "GS_MIN_P=%MIN_P%"
 set "GS_TOP_K=%TOP_K%"
@@ -137,8 +135,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
         '--port' $env:GS_PORT ^
         '--host' $env:GS_HOST ^
         '--jinja' ^
-        '--chat-template' $env:GS_CHAT_TEMPLATE ^
-        '--context-shift' ^
+        '--reasoning-format' 'none' ^
         '--temperature' $env:GS_TEMPERATURE ^
         '--min-p' $env:GS_MIN_P ^
         '--top-k' $env:GS_TOP_K ^

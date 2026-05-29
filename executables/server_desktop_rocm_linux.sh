@@ -61,13 +61,12 @@ UBATCH_SIZE="512"
 GPU_LAYERS="99"  
 PARALLEL_REQUESTS="1"
 FLASH_ATTN="on"
-CHAT_TEMPLATE="gemma"
 
-# Deterministic Google-tuned baseline
-TEMPERATURE="0"
+# Google Gemma 4 IT sampling baseline (temperature=1.0, top_p=0.95, top_k=64)
+TEMPERATURE="1.0"
 MIN_P="0.05"
-TOP_K="20"
-TOP_P="1.0"
+TOP_K="64"
+TOP_P="0.95"
 REPEAT_PENALTY="1.15"
 REPEAT_LAST_N="128"
 
@@ -159,8 +158,7 @@ set +e
   --port "$PORT" \
   --host "$HOST" \
   --jinja \
-    --chat-template "$CHAT_TEMPLATE" \
-  --context-shift \
+  --reasoning-format none \
   --temperature "$TEMPERATURE" \
     --min-p "$MIN_P" \
   --top-k "$TOP_K" \
