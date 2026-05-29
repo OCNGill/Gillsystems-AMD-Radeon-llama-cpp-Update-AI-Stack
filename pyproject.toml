@@ -4,7 +4,7 @@ build-backend = "setuptools.backends.legacy:build"
 
 [project]
 name = "gillsystems-ai-stack-updater"
-version = "1.0.0"
+version = "2.2.0"
 description = "Autonomous AMD ROCm/HIP + llama.cpp update agent for consumer GPU machines"
 readme = "README.md"
 requires-python = ">=3.11"

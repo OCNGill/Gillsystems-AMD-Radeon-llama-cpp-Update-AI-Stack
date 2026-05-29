@@ -66,6 +66,17 @@ _Completed 2026-05-06_
 - [x] Add `gfx906` (Radeon VII / Vega 20) and `gfx1033` (Steam Deck Van Gogh APU) to default targets
 - [x] Update all documentation and conductor files to reflect current state
 
+## Phase 10: Round 5 Main Launcher Optimization (Debug / Deliver)
+_Completed 2026-05-28_
+- [x] Remove `--chat-template gemma` from main Windows launcher — 31B GGUF embeds its own Jinja template; explicit override causes token boundary drift
+- [x] Add KV-cache quantization to main launcher: `--cache-type-k q8_0 --cache-type-v q8_0 --cache-ram 0` — prevents VRAM overflow at 49 152-token context on 24 GB card
+- [x] Restore `--chat-template gemma` + `--context-shift` on all three edge-node launchers (HTPC, Laptop, Steam Deck)
+- [x] Remove `--repeat-penalty` from all launchers — was producing `<unused53>` hallucination tokens
+- [x] Correct sampling profile to Google-native: `temperature=1.0 / top-k=64 / top-p=0.95 / min-p=0.05` on all launchers
+- [x] Update `tests/test_server_launchers.py` to enforce launcher asymmetry and KV-cache flags (8/8 pass)
+- [x] Create `documentation/round-5-cluster-verification-protocol.md` with production-stable parameter set
+- [x] Bump version to `2.2.0`; update CHANGELOG, conductor files
+
 ## Phase 8: Windows 11 Gen-2 Hardening (Debug / Deliver)
 _Completed 2026-05-06_
 - [x] `PYTHONUTF8=1` in `os.environ` before any stdio in `cli.py` — ensures Python 3.12+ UTF-8 I/O on Windows

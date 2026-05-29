@@ -15,5 +15,6 @@ An autonomous, reboot-resilient agent system that keeps ROCm/HIP and llama.cpp a
 - `conductor/setup_state.json`
 
 ## Status
-**Phase:** Debug / Document — Round 4 launcher stabilization prepared after round 3 verification failed on the shared cluster prompt
+**Phase:** Debug / Document — Round 5 complete: main launcher KV-cache quantization, `--chat-template gemma` removed from 31B launcher (embedded template), verification protocol documented
+**Version:** 2.2.0
 **Last Updated:** 2026-05-28
