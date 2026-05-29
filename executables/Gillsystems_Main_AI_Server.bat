@@ -46,7 +46,7 @@ if /I "%~1"=="--dry-run" (
   echo   "%PYTHON_EXE%" %PYTHON_ARGS% "%PROXY_SCRIPT%" --listen-host %PUBLIC_HOST% --listen-port %PUBLIC_PORT% --upstream-host %UPSTREAM_HOST% --upstream-port %UPSTREAM_PORT% --logs-dir "%LOG_DIR%" --node-prefix %NODE_PREFIX% --pid-file "%PROXY_PID_FILE%"
   echo.
   echo Launch Command:
-  echo   llama-server.exe -m "%MODEL_PATH%" -c 49152 -n 2048 -ngl 99 -fa on -np 1 -b 2048 -ub 512 --port %UPSTREAM_PORT% --host %UPSTREAM_HOST% --temperature 1.0 --top-k 64 --top-p 0.95 --min-p 0.05 --reasoning-format none --jinja --chat-template gemma --context-shift --ui-config "{\"chatFormat\":\"auto\"}" --log-file "%SERVER_LOG%" --log-timestamps --metrics --no-mmap
+  echo   llama-server.exe -m "%MODEL_PATH%" -c 49152 -n 2048 -ngl 99 -fa on -np 1 -b 2048 -ub 512 --cache-type-k q8_0 --cache-type-v q8_0 --cache-ram 0 --port %UPSTREAM_PORT% --host %UPSTREAM_HOST% --temperature 1.0 --top-k 64 --top-p 0.95 --min-p 0.05 --reasoning-format none --jinja --chat-template gemma --context-shift --ui-config "{\"chatFormat\":\"auto\"}" --log-file "%SERVER_LOG%" --log-timestamps --metrics --no-mmap
   exit /b 0
 )
 
@@ -109,6 +109,9 @@ llama-server.exe ^
   -np 1 ^
   -b 2048 ^
   -ub 512 ^
+  --cache-type-k q8_0 ^
+  --cache-type-v q8_0 ^
+  --cache-ram 0 ^
   --port %UPSTREAM_PORT% ^
   --host %UPSTREAM_HOST% ^
   --temperature 1.0 ^
