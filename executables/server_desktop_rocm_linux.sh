@@ -149,7 +149,7 @@ set +e
 "$SERVER_EXE" \
   -m "$MODEL_PATH" \
   -c "$CTX_SIZE" \
-    -n "$N_PREDICT" \
+  -n "$N_PREDICT" \
   -ngl "$GPU_LAYERS" \
   -fa "$FLASH_ATTN" \
   -np "$PARALLEL_REQUESTS" \
@@ -162,10 +162,11 @@ set +e
   --context-shift \
   --reasoning-format none \
   --temperature "$TEMPERATURE" \
-    --min-p "$MIN_P" \
+  --min-p "$MIN_P" \
   --top-k "$TOP_K" \
-    --top-p "$TOP_P" \
-
+  --top-p "$TOP_P" \
+  --repeat-penalty "$REPEAT_PENALTY" \
+  --repeat-last-n "$REPEAT_LAST_N" \
   --metrics \
   --no-mmap 2>&1 | tee -a "$LOG_FILE"
 EXIT_CODE=${PIPESTATUS[0]}
