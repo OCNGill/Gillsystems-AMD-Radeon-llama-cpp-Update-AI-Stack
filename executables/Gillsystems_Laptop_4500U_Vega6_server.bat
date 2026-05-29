@@ -144,6 +144,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
         '--min-p' $env:GS_MIN_P ^
         '--top-k' $env:GS_TOP_K ^
         '--top-p' $env:GS_TOP_P ^
+        '--repeat-penalty' $env:GS_REPEAT_PENALTY ^
+        '--repeat-last-n' $env:GS_REPEAT_LAST_N ^
         '--metrics' ^
         '--no-mmap' 2>&1 ^
       | Tee-Object -FilePath $env:GS_LOG_FILE -Append; ^
