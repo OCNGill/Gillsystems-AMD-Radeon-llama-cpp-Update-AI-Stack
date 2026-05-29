@@ -21,9 +21,13 @@ def test_production_launchers_use_gemma_chat_template() -> None:
     for relative_path in PRODUCTION_LAUNCHERS:
         launcher_text = _read_workspace_file(relative_path)
 
-        assert "--chat-template" in launcher_text, relative_path
         assert "gemma" in launcher_text, relative_path
         assert "--jinja" in launcher_text, relative_path
+
+    # Main uses the GGUF-embedded Gemma 4 Jinja template; --chat-template gemma
+    # maps to the old Gemma 2/3 built-in template and breaks prompt construction.
+    main_text = _read_workspace_file("executables/Gillsystems_Main_AI_Server.bat")
+    assert "--chat-template gemma" not in main_text
 
 
 def test_production_launchers_cap_generation_length() -> None:
@@ -44,7 +48,7 @@ def test_production_launchers_do_not_use_reverse_prompt_stop_hack() -> None:
 
 
 def test_production_launchers_keep_core_runtime_safeguards() -> None:
-    required_flags = ("--context-shift", "--metrics", "--no-mmap")
+    required_flags = ("--metrics", "--no-mmap")
 
     for relative_path in PRODUCTION_LAUNCHERS:
         launcher_text = _read_workspace_file(relative_path)
@@ -61,6 +65,8 @@ def test_main_launcher_uses_google_sampling_profile() -> None:
     assert '--top-p 0.95 ^' in launcher_text
     assert '--min-p 0.05 ^' in launcher_text
     assert '--reasoning-format none ^' in launcher_text
+    assert '--chat-template gemma ^' not in launcher_text
+    assert '--context-shift ^' not in launcher_text
     assert '--repeat-penalty 1.15 ^' in launcher_text
     assert '--repeat-last-n 128 ^' in launcher_text
 
