@@ -1,3 +1,23 @@
+---
+
+## v2.5.0 — 2026-09-17 — Round 7: Headless sudo + ROCm install timeout
+
+### Summary
+Battle-proven fixes from the 2026-09-16 fleet update run. HTPC full-stack update ran headless end-to-end after these changes.
+
+*"Count it all joy when you meet trials of various kinds."* — James 1:2 (three failures, three lessons, shipped)
+
+### Fixes
+1. **Headless sudo (privilege.py + bootstrap-linux.sh):** `sudo -v` quirk-fails in no-TTY sessions EVEN WITH NOPASSWD rules (validates auth path, not command authorization). Validation now runs `sudo -n whoami` — a real command, which honors NOPASSWD headless. Verified live on HTPC: updater progressed through ROCm install without a terminal.
+2. **ROCm install timeout (linux/rocm_updater.py):** hard 600s killed a legitimate 7.2.4 install mid-flight on HTPC. Now 1800s default + `GILL_ROCM_TIMEOUT` env override.
+3. **`--skip-rocm` no longer demands root (main.py):** llama-only user-space builds bypass `ensure_admin()` — Steam Deck and other user-space nodes can build without a sudo session.
+
+### Verified
+- HTPC: kernel 7.0.0-31 (broken DKMS) purged → apt repaired → amdgpu-install 7.2.4 launched headless
+- Deck: llama-only build launched user-space post-patch
+- Laptop: master-branch Vulkan build running (3-core budget via CMAKE_BUILD_PARALLEL_LEVEL)
+
+---
 # Changelog
 
 All notable changes to the **Gillsystems AI Stack Updater** are documented here per semantic versioning.
