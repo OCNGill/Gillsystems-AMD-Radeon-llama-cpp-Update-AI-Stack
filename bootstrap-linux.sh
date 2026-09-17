@@ -233,7 +233,7 @@ ensure_sudo_session() {
 
     echo "[Gillsystems AI Stack Updater] Administrator privileges are required for ROCm installs, /opt deployment, and systemd resume registration."
     echo "[Gillsystems AI Stack Updater] Requesting sudo once; it will stay warm for the rest of this run."
-    if ! sudo -v; then
+    if ! sudo -n whoami >/dev/null 2>&1; then
         echo "[Gillsystems AI Stack Updater] ERROR: sudo authentication failed."
         exit 1
     fi

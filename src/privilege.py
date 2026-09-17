@@ -112,7 +112,7 @@ def _prepare_linux_sudo() -> None:
         return
 
     try:
-        subprocess.run(["sudo", "-v"], check=True, timeout=30)
+        subprocess.run(["sudo", "-n", "whoami"], check=True, timeout=30, stdout=subprocess.DEVNULL)
     except subprocess.CalledProcessError as exc:
         raise PrivilegeError(
             "sudo authentication failed. Re-run ./update-ai-stack.sh from an interactive Linux terminal."
@@ -134,7 +134,7 @@ def _sudo_validate(non_interactive: bool = False) -> bool:
     cmd = ["sudo"]
     if non_interactive:
         cmd.append("-n")
-    cmd.append("-v")
+    cmd.append("whoami")
 
     try:
         result = subprocess.run(cmd, capture_output=True, timeout=5)

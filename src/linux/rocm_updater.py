@@ -342,6 +342,9 @@ def _run_privileged(
         capture_output=capture,
         text=True,
         check=True,
-        timeout=600,  # 10 min max
+        # Round 7 fix: full ROCm installs legitimately exceed 10 min on slower
+        # disks (observed >10 min on HTPC HDD with 7.2.4). GILL_ROCM_TIMEOUT
+        # env override; default 30 min.
+        timeout=int(os.environ.get('GILL_ROCM_TIMEOUT', '1800')),
     )
     return result
