@@ -1,5 +1,35 @@
 ---
 
+## v2.6.0 — 2026-09-21 — Round 8: Installable Package, Multi-Gen GPU Detection, Privacy Scrub
+
+### Summary
+Shipped the updater as a proper installable artifact (wheel + sdist), extended GPU detection to cover every AMD generation in the fleet, and scrubbed all identifiable information from tracked files and repository history.
+
+*"Provide things honest in the sight of all men."* — Romans 12:17 (the scrub pass exists so anyone can audit this repo without learning who runs it)
+
+### Added
+1. **Packaging (pyproject.toml):** fixed the invalid `build-backend` (`setuptools.backends.legacy:build` → `setuptools.build_meta`); wheel + sdist now build clean. End-to-end verified: fresh-venv install, `gillsystems-ai-stack-updater --help` console script, and in-wheel GPU-detect import all pass.
+2. **RDNA3 iGPU / UMA detection (gpu_detect.py):** Radeon 780M → gfx1103, 680M → gfx1035 (product map + PCI `1681`); Vega/UMA APU PCI IDs `15DD` (Raven), `15D8` (Picasso), `1636` (Renoir), `1638` (Cezanne), `164E` (Cezanne refresh) → gfx90c.
+3. **RDNA3 dGPU coverage:** PCI `745E` (PRO W7900), `7481` (7600 XT), `7483`, `7489` (PRO W7600); product map additions RX 7600 XT, 7700S, PRO W7600/W7700, RX 7900M.
+
+### Fixed
+1. **PCI-ID mislabel (gpu_detect.py):** `7480` was mapped to gfx1100 ("RX 7900 XT") — it is Navi 33 (RX 7600 class) and must be gfx1102. Would have misdetection-fed CMake AMDGPU_TARGETS on Navi 33 nodes. Verified against live device reports (1002:7480 = Navi 33). The working 7900 XTX (`744C` → gfx1100) path is unchanged and re-probed green.
+2. **llama_builder.py NameError:** the shared-lib mirror block referenced `bin_dir` before its assignment; `bin_dir` is now defined before use and lib mirroring requires an existing `bin/`.
+3. **Stale privilege test:** `test_ensure_admin_runs_sudo_validate_when_needed` expected the old `sudo -v` contract; implementation validates with `sudo -n whoami` (headless-safe, per v2.5.0). Test updated to the real contract.
+
+### Privacy Scrub
+- All node names, node IPs (192.0.2.0/24 → RFC 5737 192.0.2.0/24 documentation range), OS usernames, personal handles, and machine-specific paths replaced with generic role-based names (primary-node / desktop-node / mobile-node / deck-node) across every tracked file.
+- Per-node launchers renamed to generic per-profile names: `server_primary_hip_windows.bat`, `server_desktop_rocm_linux.sh`, `server_mobile_uma_windows.bat`, `server_deck_vulkan_linux.sh`, `server_edit_per_node.bat/.sh`.
+- Personal QR-code payment images removed; donation links replaced with placeholders.
+- Git history rewritten with `git-filter-repo` (blob replace-text + path renames + author identity mailmapped to the project address).
+
+### Verified
+- 113/113 tests pass
+- Live detection probes: `7480`→gfx1102, `744C`→gfx1100, Deck `163F`→gfx1033, Vega IDs → gfx90c tier 2
+- Wheel identifier scan: CLEAN
+
+---
+
 ## v2.5.0 — 2026-09-17 — Round 7: Headless sudo + ROCm install timeout
 
 ### Summary

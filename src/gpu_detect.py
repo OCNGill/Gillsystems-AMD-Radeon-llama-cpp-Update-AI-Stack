@@ -14,13 +14,21 @@ from typing import List, Optional
 
 # Map of common AMD GPU product names → gfx architecture IDs
 _PRODUCT_TO_GFX: dict[str, str] = {
-    # RDNA 3 (GFX11)
+    # RDNA 3 (GFX11) — dGPUs
     "RX 7900 XTX": "gfx1100",
     "RX 7900 XT":  "gfx1100",
     "RX 7900 GRE": "gfx1100",
+    "RX 7900M":    "gfx1100",
     "RX 7800 XT":  "gfx1101",
     "RX 7700 XT":  "gfx1101",
+    "PRO W7700":   "gfx1101",
+    "RX 7700S":    "gfx1102",
+    "RX 7600 XT":  "gfx1102",
     "RX 7600":     "gfx1102",
+    "PRO W7600":   "gfx1102",
+    # RDNA 3 (GFX11) — APU iGPUs (must precede generic "AMD Radeon Graphics")
+    "Radeon 780M": "gfx1103",  # Phoenix APU
+    "Radeon 680M": "gfx1035",  # Rembrandt APU
     # RDNA 2 (GFX10)
     "RX 6950 XT":  "gfx1030",
     "RX 6900 XT":  "gfx1030",
@@ -28,24 +36,26 @@ _PRODUCT_TO_GFX: dict[str, str] = {
     "RX 6800":     "gfx1030",
     "RX 6750 XT":  "gfx1031",
     "RX 6700 XT":  "gfx1031",
+    "RX 6700S":    "gfx1031",
     "RX 6700":     "gfx1031",
     "RX 6650 XT":  "gfx1032",
     "RX 6600 XT":  "gfx1032",
+    "RX 6600M":    "gfx1032",
     "RX 6600":     "gfx1032",
     "RX 6500 XT":  "gfx1034",
     "RX 6400":     "gfx1034",
     # Steam Deck / Van Gogh APU (RDNA 2)
     "AMD Custom GPU 0405": "gfx1033",
-    # Mobile APUs / Vega
-    "Radeon Vega": "gfx90c",
-    "AMD Radeon Graphics": "gfx1036",  # General fallback for modern mobile APUs
+    # Vega iGPUs / UMA APUs
+    "Radeon Vega": "gfx90c",   # Raven Ridge / Picasso / Renoir / Cezanne class
     # RDNA 1 (GFX10)
     "RX 5700 XT":  "gfx1010",
     "RX 5700":     "gfx1010",
     "RX 5600 XT":  "gfx1012",
     "RX 5500 XT":  "gfx1012",
-    # Fallback
+    # Workstation / fallback
     "Radeon PRO W7900": "gfx1100",
+    "AMD Radeon Graphics": "gfx1036",  # General fallback for modern mobile APUs
 }
 
 # Fallback default when detection fails
@@ -253,15 +263,17 @@ class GPUDetector:
 # ---------------------------------------------------------------------------
 
 _PCI_TO_GFX: dict[str, str] = {
-    # RDNA 3 (gfx1100)
+    # RDNA 3 (gfx1100) — Navi 31
     "744C": "gfx1100",  # RX 7900 XTX
-    "7480": "gfx1100",  # RX 7900 XT
-    "7448": "gfx1100",  # RX 7900 GRE
-    # RDNA 3 (gfx1101)
-    "747E": "gfx1101",  # RX 7800 XT
-    "7470": "gfx1101",  # RX 7700 XT
-    # RDNA 3 (gfx1102)
-    "7422": "gfx1102",  # RX 7600
+    "7448": "gfx1100",  # Navi 31 family (7900-series variants)
+    "745E": "gfx1100",  # Radeon PRO W7900
+    # RDNA 3 (gfx1101) — Navi 32
+    "747E": "gfx1101",  # RX 7800 XT / 7700 XT family
+    # RDNA 3 (gfx1102) — Navi 33
+    "7480": "gfx1102",  # RX 7600 / 7600S / 7700S
+    "7481": "gfx1102",  # RX 7600 XT
+    "7483": "gfx1102",  # Navi 33 variant
+    "7489": "gfx1102",  # PRO W7600
     # RDNA 2 (gfx1030)
     "73BF": "gfx1030",  # RX 6950 XT / 6900 XT
     "73A5": "gfx1030",  # RX 6800 XT
@@ -273,6 +285,14 @@ _PCI_TO_GFX: dict[str, str] = {
     "73FF": "gfx1032",  # RX 6650 XT / 6600 XT / 6600
     # RDNA 2 APU (gfx1033) — Steam Deck / Van Gogh
     "163F": "gfx1033",  # AMD Custom GPU 0405 (Steam Deck)
+    # RDNA 2 APU (gfx1035) — Rembrandt
+    "1681": "gfx1035",  # Radeon 680M / 660M (Rembrandt)
+    # Vega / UMA APU iGPUs (gfx90c class)
+    "15DD": "gfx90c",   # Raven Ridge (Ryzen 2000-series UMA)
+    "15D8": "gfx90c",   # Picasso / Dali (Ryzen 3000 mobile UMA)
+    "1636": "gfx90c",   # Renoir (Ryzen 4000 mobile UMA)
+    "1638": "gfx90c",   # Cezanne (Ryzen 5000 desktop APU UMA)
+    "164E": "gfx90c",   # Cezanne refresh (Ryzen 5000 mobile UMA)
 }
 
 

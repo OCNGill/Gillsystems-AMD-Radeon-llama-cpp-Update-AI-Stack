@@ -435,8 +435,8 @@ For detailed information on the agent architecture, team composition, configurat
 If you find this project helpful, you can support ongoing work — thank you!
 
 <p align="center">
-	<img src="Gillsystems_logo_stuff/Readme%20Donation%20files/qr-paypal.png" alt="PayPal QR code" width="180" style="margin:8px;">
-	<img src="Gillsystems_logo_stuff/Readme%20Donation%20files/qr-venmo.png" alt="Venmo QR code" width="180" style="margin:8px;">
+	<!-- personal QR payment image removed -->
+	<!-- personal QR payment image removed -->
 </p>
 
 
@@ -449,7 +449,7 @@ If you find this project helpful, you can support ongoing work — thank you!
 
 
 <p align="center">
-	<img src="Gillsystems_logo_stuff/Readme%20Donation%20files/Gillsystems_logo_with_donation_qrcodes.png" alt="Gillsystems logo with QR codes and icons" width="800">
+	<!-- personal QR payment image removed -->
 </p>
 
 <p align="center">

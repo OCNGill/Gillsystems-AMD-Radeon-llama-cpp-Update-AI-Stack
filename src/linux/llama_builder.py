@@ -237,8 +237,23 @@ class LlamaBuilderLinux:
         _run_with_optional_privilege(install_cmd, privileged=install_requires_privilege)
         print_success(f"Installed to {self.install_dir}")
 
-        # Symlink the binaries into /usr/local/bin for convenience
+        # Shared binaries dir (used by lib mirroring, PATH symlinks, and mirroring)
         bin_dir = self.install_dir / "bin"
+
+        # Newer llama.cpp installs shared libs to lib/ but binaries lack an rpath to ../lib.
+        # Mirror libs into bin/ so every launcher works without LD_LIBRARY_PATH plumbing.
+        lib_dir = self.install_dir / "lib"
+        if lib_dir.exists() and bin_dir.exists():
+            for lib in lib_dir.glob("*.so*"):
+                link = bin_dir / lib.name
+                if link.is_symlink() or link.exists():
+                    link.unlink()
+                try:
+                    link.symlink_to(lib)
+                except OSError as exc:
+                    print_warning(f"Could not link {lib.name} into bin/: {exc}")
+
+        # Symlink the binaries into /usr/local/bin for convenience
         if bin_dir.exists():
             symlink_dir = Path("/usr/local/bin")
             _symlink_binaries(

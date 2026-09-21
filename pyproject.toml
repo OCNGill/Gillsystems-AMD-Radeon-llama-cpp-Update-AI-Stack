@@ -1,10 +1,10 @@
 [build-system]
 requires = ["setuptools>=70", "wheel"]
-build-backend = "setuptools.backends.legacy:build"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "gillsystems-ai-stack-updater"
-version = "2.3.0"
+version = "2.6.0"
 description = "Autonomous AMD ROCm/HIP + llama.cpp update agent for consumer GPU machines"
 readme = "README.md"
 requires-python = ">=3.11"

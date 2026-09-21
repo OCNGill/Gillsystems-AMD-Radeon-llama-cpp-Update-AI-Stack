@@ -40,7 +40,7 @@
 - **Storage:** 2 TB NVMe
 - **Model Path:** `C:\Models\Working_Models\`
 - **LLM Inference Speed:** ~130 tokens/sec
-- **Home Directory:** `(C:\Users\<user>) Laptop\`
+- **Home Directory:** `C:\Users\<user> Laptop\`
 
 ---
 
@@ -73,10 +73,10 @@
 - **RAM:** 20 GB
 - **GPU:** AMD Radeon Vega 6 (integrated)
 - **Storage:** 1 TB SSD
-- **Model Path:** `(C:\Users\<user>) Laptop\Desktop\Models\`
+- **Model Path:** `C:\Users\<user> Laptop\Desktop\Models\`
 - **MAC Address:** `6D:B4:D3:4C:32:C8`
 - **LLM Inference Speed:** ~9 tokens/sec
-- **Home Directory:** `(C:\Users\<user>) Laptop\`
+- **Home Directory:** `C:\Users\<user> Laptop\`
 
 ---
 

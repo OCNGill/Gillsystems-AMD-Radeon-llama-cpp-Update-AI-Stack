@@ -20,7 +20,7 @@
 ## 2. llama.cpp Git Pull
 
 - Repo: `ggml-org/llama.cpp` (correct for Windows — not the ROCm fork)
-- Source dir: `(C:\Users\<user>)\src\llama.cpp`
+- Source dir: `C:\Users\<user>\src\llama.cpp`
 - Previous commit: `7155a49` → fast-forwarded to **`b28a2f3`** (master)
 - 30+ new release tags fetched: b9161 through **b9222** (latest)
 
@@ -63,7 +63,7 @@
 
 ```
 Build type:      Release
-Build dir:       (C:/Users/<user>)/src/llama.cpp/build-hip-win
+Build dir:       C:/Users/<user>/src/llama.cpp/build-hip-win
 GPU target:      gfx1100
 ggml version:    0.12.0 (b28a2f3)
 ```

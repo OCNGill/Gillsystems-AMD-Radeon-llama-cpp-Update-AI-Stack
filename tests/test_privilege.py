@@ -1,6 +1,7 @@
 """Tests for platform privilege handling."""
 from __future__ import annotations
 
+import subprocess
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -30,7 +31,9 @@ class TestLinuxPrivilegeHandling:
              patch("src.privilege.subprocess.run", return_value=MagicMock(returncode=0)) as mock_run:
             ensure_admin()
 
-        mock_run.assert_called_once_with(["sudo", "-v"], check=True, timeout=30)
+        mock_run.assert_called_once_with(
+            ["sudo", "-n", "whoami"], check=True, timeout=30, stdout=subprocess.DEVNULL
+        )
 
     def test_ensure_admin_raises_without_sudo(self) -> None:
         with patch.object(sys, "platform", "linux"), \
