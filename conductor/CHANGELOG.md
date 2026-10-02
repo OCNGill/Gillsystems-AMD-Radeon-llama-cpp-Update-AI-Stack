@@ -1,1 +1,1 @@
-C:/Users/Gillsystems Laptop/source/repos/OCNGill/Gillsystems-AMD-Radeon-llama-cpp-Update-AI-Stack/CHANGELOG.md
+../CHANGELOG.md

@@ -1,28 +1,34 @@
-# Product Definition — Gillsystems AI Stack Updater Agent
+# Product Definition — Gillsystems AI Stack Updater Enterprise Edition
 
 ## Mission
-Provide a single-invocation, fully autonomous agent that detects, downloads, builds, and installs the latest stable releases of **ROCm/HIP** (and all dependencies) and **llama.cpp** (compiled against the installed ROCm) — across both **Windows** and **Linux** — on AMD consumer GPU hardware.
+Provide an enterprise-grade, policy-driven AI stack update platform with full governance, audit trails, rollback capability, and fleet orchestration for air-gapped and multi-node environments.
 
-## Core Value
-Eliminates the painful, error-prone manual process of keeping the AMD AI software stack current on consumer hardware where official tooling is sparse and the dependency graph is deep.
+## Core Value (Enterprise Delta)
+**Control, Governance, Scale** — not new update logic. OS's don't change, software doesn't change. Enterprise value is DECIDING what changes, not whatever the CLI found.
 
-## Target Users / Nodes
-| Node | OS | GPU | gfx | Backend |
-|---|---|---|---|---|
-| primary-node | Windows 11 Pro | RX 7900 XTX | gfx1100 | HIP/ROCm (Tier 1) |
-| desktop-node | Kubuntu | RX 7600 | gfx1102 | ROCm (Tier 1) |
-| mobile-node | Windows 10 | Vega 6 iGPU | gfx90c | Vulkan + HIP UMA (Tier 2) |
-| deck-node | SteamOS | RDNA 2 APU | gfx1033 | Vulkan + HIP UMA (Tier 2) |
+## Enterprise Capabilities (Priority Order)
+1. **Policy-Driven Updates** — Declarative config: managed runtimes/models/tools, pinned versions, allowed ranges, approval gates.
+2. **Audit Log** — Every change gets a diff, an approval step, an immutable record of who/when.
+3. **Rollback** — Every update reversible, previous state captured first.
+4. **Fleet/Multi-Node Orchestration** — Fleet targeting, concurrency limits, partial-failure handling.
+5. **Air-Gapped / Offline** — Works from internal mirror with no internet.
+6. **Secrets + Auth** — No plaintext credentials, service-account auth, least privilege.
+7. **Reporting** — Scheduled compliance reports, current vs desired across fleet.
+8. **Unattended** — Windows service/scheduled task, not a human at a terminal.
 
-## Key Capabilities
-1. **Version Detection** — Checks currently installed versions vs. latest upstream releases; GitHub Releases API with HTML redirect rate-limit fallback.
-2. **Automated Update** — Downloads, compiles (if needed), and installs new versions.
-3. **Reboot Resilience** — Survives reboots mid-update, resumes exactly where it left off.
-4. **Dual-OS** — Separate sub-agents for Windows and Linux with shared core logic.
-5. **Dual-Target** — ROCm/HIP stack + llama.cpp, each as independent update routines.
-6. **Invocation-Only** — Does nothing unless explicitly launched via `.bat` / `.sh`.
-7. **Admin/Sudo** — Runs with elevated privileges for driver/kernel-level installs.
-8. **Windows First-Run Bootstrap** — `bootstrap.ps1` finds Python, installs deps, keeps window open on error.
-9. **Force Clean Build** — `--force` nukes stale CMake cache before rebuild, preventing HIP SDK version pollution and locked-exe install failures.
-10. **Zero-Day Model Support** — `--bleeding-edge` compiles from master for immediate support of new GGML tensor formats (e.g. Gemma 4 CoT tensors, sliding window attention).
-11. **AMD Docs Compliance** — Linux uses AMD’s official `ROCm/llama.cpp` fork; `HIPCXX`/`HIP_PATH` set from `hipconfig`; `-DLLAMA_CURL=ON`; `GGML_HIP_ROCWMMA_FATTN=ON` for Gemma 4 attention pattern support.
+## Target Environments
+| Environment | OS | Network | Use Case |
+|-------------|-----|---------|----------|
+| Enterprise DC | Windows Server 2022 / RHEL 9 | Air-gapped | GPU inference cluster |
+| Edge Nodes | Ubuntu 22.04 / Windows 11 | Intermittent | Inference at edge |
+| Dev Workstations | Windows 11 / Fedora | Connected | Developer AI stack mgmt |
+
+## Compliance Requirements
+- SOC 2 Type II audit trail
+- Immutable change logs (append-only, hash-chained)
+- Role-based approval gates
+- FIPS 140-2 compatible crypto for secrets
+
+## Public/Private Split
+- **Public** (`Gillsystems-AMD-Radeon-llama-cpp-Update-AI-Stack`): Open source, serves individual developers and small teams. MIT license.
+- **Private** (this repo): Enterprise features, proprietary license. No enterprise code in public repo.

@@ -46,8 +46,24 @@ _PRODUCT_TO_GFX: dict[str, str] = {
     "RX 6400":     "gfx1034",
     # Steam Deck / Van Gogh APU (RDNA 2)
     "AMD Custom GPU 0405": "gfx1033",
+    # Vega (GFX906) APU iGPUs — Cezanne / Lucienne (must precede "Radeon Vega"
+    # and generic "AMD Radeon Graphics": Cezanne reports gfx906, NOT the gfx90c
+    # of Raven Ridge / Picasso / Renoir)
+    "AMD Radeon Graphics (Cezanne)": "gfx906",  # WMI name form, e.g. 5600G
+    "Radeon Graphics (Cezanne)":     "gfx906",  # WMI form without AMD prefix
+    "Cezanne":                      "gfx906",  # lspci/racadm codename form
+    "Lucienne":                     "gfx906",  # Cezanne refresh codename
+    "RX Vega 7 Graphics":           "gfx906",  # Ryzen 5 5600G / 5600GE (7CU)
+    "RX Vega 8 Graphics":           "gfx906",  # Ryzen 7 5700G / 5700GE (8CU)
+    "RX Vega 6 Graphics":           "gfx906",  # Ryzen 3 5300G / 5300GE (6CU)
+    "5600GE": "gfx906",  # Ryzen 5 5600GE (7CU)
+    "5600G":  "gfx906",  # Ryzen 5 5600G (7CU)
+    "5700GE": "gfx906",  # Ryzen 7 5700GE (8CU)
+    "5700G":  "gfx906",  # Ryzen 7 5700G (8CU)
+    "5300GE": "gfx906",  # Ryzen 3 5300GE (6CU)
+    "5300G":  "gfx906",  # Ryzen 3 5300G (6CU)
     # Vega iGPUs / UMA APUs
-    "Radeon Vega": "gfx90c",   # Raven Ridge / Picasso / Renoir / Cezanne class
+    "Radeon Vega": "gfx90c",   # Raven Ridge / Picasso / Renoir class
     # RDNA 1 (GFX10)
     "RX 5700 XT":  "gfx1010",
     "RX 5700":     "gfx1010",
@@ -61,13 +77,43 @@ _PRODUCT_TO_GFX: dict[str, str] = {
 # Fallback default when detection fails
 DEFAULT_TARGETS: List[str] = ["gfx1100", "gfx1030"]
 
+# Production-Grade GPUs (MUST use ROCm/HIP).  Used both to pick a compute tier
+# and, on a multi-GPU box, to decide which target is primary.
+_PRODUCTION_TIER_TARGETS: set[str] = {
+    "gfx1100", "gfx1101", "gfx1102",
+    "gfx1030", "gfx1031", "gfx1032",
+}
+
+
+def _match_name(name: str) -> Optional[str]:
+    """
+    Map a single GPU product name to a gfx ID using _PRODUCT_TO_GFX.
+
+    The dict is ordered most-specific-first and a NAME MATCHES AT MOST ONE
+    KEY (first hit wins).  That ordering is load-bearing: specific APU codename
+    entries (e.g. "AMD Radeon Graphics (Cezanne)") must sit before the generic
+    "AMD Radeon Graphics" fallback, otherwise the generic entry shadows the
+    real iGPU architecture.
+
+    The raw name is matched first, then a copy with parenthesised suffixes
+    (e.g. "(TM)", "(R)") stripped, so a codename in parentheses is not thrown
+    away before matching.
+    """
+    raw = " ".join(name.split())
+    cleaned = " ".join(re.sub(r"\s*\([^)]*\)\s*", " ", name).split())
+    for candidate in (raw, cleaned):
+        for product, gfx in _PRODUCT_TO_GFX.items():
+            if product.upper() in candidate.upper():
+                return gfx
+    return None
+
 
 def get_compute_tier(targets: List[str]) -> int:
     """
     Returns 1 for Production-Grade GPUs (MUST use ROCm/HIP).
     Returns 2 for Mobile/Edge APUs (allowed Vulkan fallback, needs UMA).
     """
-    tier_1 = {"gfx1100", "gfx1101", "gfx1102", "gfx1030", "gfx1031", "gfx1032"}
+    tier_1 = _PRODUCTION_TIER_TARGETS
     for t in targets:
         if t in tier_1:
             return 1
@@ -99,7 +145,19 @@ class GPUDetector:
             if t not in seen:
                 seen.add(t)
                 unique.append(t)
-        return unique
+
+        # Multi-GPU: keep every target (dGPU + iGPU), but order production-grade
+        # dGPUs first so detect_primary() returns the discrete card.  WMI / lspci
+        # enumeration order is arbitrary, so without this a dGPU+iGPU box can
+        # report the iGPU as primary.
+        igpu: List[str] = []
+        dgpu: List[str] = []
+        for t in unique:
+            if t in _PRODUCTION_TIER_TARGETS:
+                dgpu.append(t)
+            else:
+                igpu.append(t)
+        return dgpu + igpu
 
     def detect_primary(self) -> str:
         """Return just the first (primary) GPU target."""
@@ -163,9 +221,11 @@ class GPUDetector:
             for line in out.splitlines():
                 if "AMD" not in line and "Radeon" not in line:
                     continue
-                for product, gfx in _PRODUCT_TO_GFX.items():
-                    if product.upper() in line.upper():
-                        targets.append(gfx)
+                # First match wins, so the generic "AMD Radeon Graphics"
+                # fallback cannot shadow a more specific entry on the same line.
+                gfx = _match_name(line)
+                if gfx:
+                    targets.append(gfx)
             return targets
         except Exception:
             return []
@@ -221,26 +281,18 @@ class GPUDetector:
         for name in names:
             if "AMD" not in name.upper() and "RADEON" not in name.upper():
                 continue
-            
-            # Clean up parenthesized strings like (TM) or (R)
-            cleaned_name = re.sub(r'\s*\([^)]*\)\s*', ' ', name)
-            cleaned_name = " ".join(cleaned_name.split())
-            
-            matched = False
-            for product, gfx in _PRODUCT_TO_GFX.items():
-                cleaned_product = re.sub(r'\s*\([^)]*\)\s*', ' ', product)
-                cleaned_product = " ".join(cleaned_product.split())
-                
-                if cleaned_product.upper() in cleaned_name.upper():
-                    targets.append(gfx)
-                    matched = True
-                    break
-            
-            if not matched:
-                # Try to extract gfx from driver description
-                match = re.search(r"gfx\d{3,4}", name, re.IGNORECASE)
-                if match:
-                    targets.append(match.group(0).lower())
+
+            # Matched on the raw name first so an APU codename in parentheses
+            # (e.g. "(Cezanne)") is not stripped before the lookup.
+            gfx = _match_name(name)
+            if gfx:
+                targets.append(gfx)
+                continue
+
+            # Try to extract gfx from driver description
+            match = re.search(r"gfx\d{3,4}", name, re.IGNORECASE)
+            if match:
+                targets.append(match.group(0).lower())
         return targets
 
     def _windows_via_hipinfo(self) -> List[str]:
@@ -291,8 +343,8 @@ _PCI_TO_GFX: dict[str, str] = {
     "15DD": "gfx90c",   # Raven Ridge (Ryzen 2000-series UMA)
     "15D8": "gfx90c",   # Picasso / Dali (Ryzen 3000 mobile UMA)
     "1636": "gfx90c",   # Renoir (Ryzen 4000 mobile UMA)
-    "1638": "gfx90c",   # Cezanne (Ryzen 5000 desktop APU UMA)
-    "164E": "gfx90c",   # Cezanne refresh (Ryzen 5000 mobile UMA)
+    "1638": "gfx906",   # Cezanne (Ryzen 5000 desktop APU UMA — e.g. 5600G)
+    "164E": "gfx906",   # Cezanne refresh (Ryzen 5000 mobile UMA)
 }
 
 

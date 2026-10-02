@@ -30,6 +30,47 @@ Shipped the updater as a proper installable artifact (wheel + sdist), extended G
 
 ---
 
+# Changelog — Enterprise Edition
+
+All notable changes to the **Gillsystems AI Stack Updater Enterprise Edition** are documented here.
+
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+> **Public Baseline:** This enterprise edition is forked from the public `Gillsystems-AMD-Radeon-llama-cpp-Update-AI-Stack` v2.6.0 (MIT license). Public repo remains open source. Enterprise edition is proprietary.
+
+---
+
+## [0.1.0-enterprise] — 2026-10-02 — Enterprise Edition Initialized
+
+### Added
+- **Private repository created:** `OCNGill/Gillsystems-AI-Stack-Updater-Enterprise` with verified private visibility
+- **Enterprise pyproject.toml:** Proprietary license, Python 3.13+, enterprise dependencies (cryptography, paramiko, msal, hvac, azure-keyvault-secrets, boto3, jinja2)
+- **7D Conductor structure:** product.md (enterprise mission), setup_state.json (enterprise tracks), tracks.md (T-100 through T-108)
+- **Public/Private split documented:** Public serves individuals (MIT); Private serves enterprise (Proprietary)
+
+### Enterprise Tracks Defined
+- T-100: Enterprise Foundation (repo, conductor, base modules)
+- T-101: Policy-Driven Updates (pinned versions, ranges, approval gates)
+- T-102: Audit Log (immutable hash-chained trail)
+- T-103: Rollback (pre-update capture, reversible updates)
+- T-104: Fleet Orchestration (multi-node, concurrency, partial failure)
+- T-105: Air-Gapped/Offline (internal mirror, no internet)
+- T-106: Secrets & Auth (vault integration, service accounts)
+- T-107: Reporting (compliance, current vs desired)
+- T-108: Unattended Service (Windows service / systemd unit)
+
+> **Verse:** Proverbs 16:3 — "Commit to the Lord whatever you do, and he will establish your plans." — Foundation laid on solid ground before building.
+
+---
+
+# Changelog — Public Baseline (Reference)
+
+All notable changes to the **Gillsystems AI Stack Updater** (public) are documented here per semantic versioning.
+
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+---
+
 ## v2.5.0 — 2026-09-17 — Round 7: Headless sudo + ROCm install timeout
 
 ### Summary

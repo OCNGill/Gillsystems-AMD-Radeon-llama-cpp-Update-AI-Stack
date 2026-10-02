@@ -326,7 +326,7 @@ CREATE TABLE steps (
 |---|---|---|
 | RX 5500 / 5600 / 5700 | RDNA1 | `gfx1010`, `gfx1011`, `gfx1012` |
 | RX 6600 / 6700 / 6800 / 6900 | RDNA2 | `gfx1030`, `gfx1031`, `gfx1032` |
-| RX 7600 | RDNA3 | `gfx1102` |
+| RX 7600 | RDNA3 (Navi 31) | `gfx1102` |
 | RX 7700 XT / 7800 XT | RDNA3 | `gfx1101` |
 | RX 7900 GRE / 7900 XT / 7900 XTX | RDNA3 | `gfx1100` |
 | RX 9070 / 9070 XT | RDNA4 | `gfx1200`, `gfx1201` |
@@ -336,6 +336,27 @@ CREATE TABLE steps (
 | RX 580 / 590 | Polaris | `gfx803` |
 
 Gillsystems AI Stack Updater auto-detects the correct targets using `rocminfo`, `/sys/class/drm`, `lspci -nn`, `wmi`, and `hipInfo`. Manual override is available via `--gpu-targets` or the config file.
+
+### Dual-GPU Systems (gfx1102 dGPU + gfx906 iGPU)
+
+A machine with **both** a `gfx1102` discrete GPU and a `gfx906` integrated GPU — for
+example the HTPC's Ryzen 5 5600G (Cezanne, Radeon RX Vega 7) with an RX 7600 8 GB
+installed alongside it — is a **dual-GPU ("duel compute") node**. Two rules apply:
+
+1. **Build `AMDGPU_TARGETS` with BOTH architectures**, e.g.
+   `-DAMDGPU_TARGETS=gfx1102;gfx906`. Detection returns every AMD GPU present on
+   the host, so both IDs land in the list; do not hand-trim the iGPU out just
+   because ROCm inference runs on the dGPU. Dropping `gfx906` breaks any binary
+   that is later pointed at the iGPU Vulkan lane.
+2. **Pin ROCm to the dGPU.** The `gfx1102` card owns 8 GB of dedicated VRAM and is
+   the only device large enough for full-offload models; the `gfx906` iGPU is a UMA
+   part carved out of system RAM. Keep ROCm/HIP pinned to `gfx1102` (for example via
+   `HIP_VISIBLE_DEVICES=0` when the dGPU enumerates first) so ROCm never initialises
+   against the UMA iGPU. The iGPU stays available for display, DE/compositing, and
+   the small-model Vulkan lane.
+
+Note that `get_compute_tier()` returns Tier 1 on such a host because `gfx1102` is a
+Tier 1 target — the presence of a Tier 2 `gfx906` iGPU does not downgrade the node.
 
 ---
 

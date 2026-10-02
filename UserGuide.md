@@ -46,10 +46,17 @@ executables/server_primary_hip_windows.bat
 - Repeat penalty: `--repeat-penalty 1.15 --repeat-last-n 128` (anti-loop mechanism, active as of Round 6)
 - Logging: root `logs/` capture via PowerShell `Tee-Object`
 
-**KUbuntu HTPC (RX 7600 / gfx1102 — ROCm/HIP, Tier 1):**
+**KUbuntu HTPC (dual-GPU: RX 7600 / gfx1102 dGPU — ROCm/HIP, Tier 1):**
 ```bash
 executables/server_desktop_rocm_linux.sh
 ```
+- Dual-GPU ("duel compute") host: Ryzen 5 5600G (Cezanne) iGPU is Radeon RX Vega 7
+  (`gfx906`, 4 GB UMA carve-out); the dGPU is Radeon RX 7600 8 GB (`gfx1102`, Navi 31,
+  dedicated VRAM)
+- **Build with both targets** — `-DAMDGPU_TARGETS=gfx1102;gfx906`. Do not trim the
+  `gfx906` iGPU out of the list.
+- **ROCm stays pinned to the dGPU** (`gfx1102`); the iGPU carries display/DE/compositing
+  and the small-model Vulkan lane. A dGPU-capable host still reports Tier 1.
 - Context: 32 768 tokens
 - Default output cap: 1 536 tokens
 - Runtime pairing: executable, shared libraries, and optional rocBLAS Tensile path are resolved together
@@ -100,7 +107,8 @@ Gillsystems AI Stack Updater implements a fully reboot-resilient architecture th
   - **Linux:** Clones AMD's official [`ROCm/llama.cpp`](https://github.com/ROCm/llama.cpp) fork (per AMD documentation). Sets `HIPCXX` and `HIP_PATH` from `hipconfig` before building. CMake flags include `-DGGML_HIP=ON`, `-DGGML_HIP_ROCWMMA_FATTN=ON`, and `-DLLAMA_CURL=ON`. When a live Linux run reaches the `llama.cpp` step, missing build prerequisites are installed automatically with the host package manager; Tier 1 machines still hard-require HIP, while Tier 2 machines install the Vulkan development packages needed for fallback builds.
   - **Windows:** Clones [`ggml-org/llama.cpp`](https://github.com/ggml-org/llama.cpp) (AMD has no native Windows ROCm build documentation). Uses Ninja + MSVC with auto-detected HIP SDK path for Tier 1 nodes, and configures Tier 2 Vulkan fallback through the LunarG Vulkan SDK when HIP is not available.
   - **Install layout:** Successful installs land in the canonical platform root (`C:\Gillsystems\llama.cpp\bin` on Windows, `/opt/gillsystems/llama.cpp/bin` on Linux) and are mirrored into `<llama_cpp_source>/bin` for direct testing from the active source tree.
-  - GPU architecture targets (`AMDGPU_TARGETS`) are auto-detected from WMI / rocminfo and cover all Gillsystems nodes: `gfx1100` (7900 XTX), `gfx1102` (RX 7600), `gfx1033` (Steam Deck), `gfx1030` (RDNA 2), `gfx906` (Vega 20), and more.
+  - GPU architecture targets (`AMDGPU_TARGETS`) are auto-detected from WMI / rocminfo and cover all Gillsystems nodes: `gfx1100` (7900 XTX), `gfx1102` (RX 7600 / Navi 31), `gfx1033` (Steam Deck), `gfx1030` (RDNA 2), `gfx906` (Vega 20 / Cezanne RX Vega 7), and more.
+  - On a **dual-GPU** node (a `gfx1102` dGPU alongside a `gfx906` iGPU, e.g. the HTPC) detection yields **both** IDs and the build must include both; ROCm/HIP is then pinned to the `gfx1102` dGPU, while the `gfx906` iGPU stays on the display/DE and Vulkan small-model lane.
 
 ### 🔧 Force a Clean Rebuild
 
