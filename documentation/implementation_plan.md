@@ -193,41 +193,41 @@ gillsystems-update-ai-engine-software/
 
 ---
 
-#### [NEW] [main.py](file:///c:/Users/Gillsystems%20Laptop/source/repos/OCNGill/Gillsystems-update-ai-engine-software/src/main.py)
+#### [NEW] [main.py](../src/main.py)
 - **Orchestrator** that detects OS, loads config, checks state, and dispatches to the correct sub-agent
 - Implements the top-level state machine: `CHECK → UPDATE_ROCM → REBOOT? → UPDATE_LLAMA → VALIDATE → DONE`
 - Handles `--dry-run`, `--yes`, `--force`, `--verbose` flags
 - Entry point called by `.bat` / `.sh` launchers
 
-#### [NEW] [state_manager.py](file:///c:/Users/Gillsystems%20Laptop/source/repos/OCNGill/Gillsystems-update-ai-engine-software/src/state_manager.py)
+#### [NEW] [state_manager.py](../src/state_manager.py)
 - SQLite-backed checkpoint ledger
 - Each step is an idempotent record: `step_id`, `status` (pending/running/done/failed), `started_at`, `completed_at`, `output`
 - On startup: checks for incomplete runs and resumes from last successful step
 - Writes a JSON "handoff" file before reboot with next-step instructions
 
-#### [NEW] [version_intel.py](file:///c:/Users/Gillsystems%20Laptop/source/repos/OCNGill/Gillsystems-update-ai-engine-software/src/version_intel.py)
+#### [NEW] [version_intel.py](../src/version_intel.py)
 - Queries GitHub Releases API for `ggml-org/llama.cpp` latest tag
 - Scrapes/queries AMD repo metadata for latest ROCm version
 - Compares against locally installed versions (`rocm-smi --version`, `hipcc --version`, checking llama.cpp binary version)
 - Returns structured `UpdateManifest` with what needs updating
 
-#### [NEW] [gpu_detect.py](file:///c:/Users/Gillsystems%20Laptop/source/repos/OCNGill/Gillsystems-update-ai-engine-software/src/gpu_detect.py)
+#### [NEW] [gpu_detect.py](../src/gpu_detect.py)
 - Auto-detects AMD GPU model and maps to `gfx` architecture ID
 - Linux: parses `rocminfo` or `/sys/class/drm/card*/device`
 - Windows: queries WMI or `hipInfo`
 - Returns `AMDGPU_TARGETS` value for CMake
 
-#### [NEW] [privilege.py](file:///c:/Users/Gillsystems%20Laptop/source/repos/OCNGill/Gillsystems-update-ai-engine-software/src/privilege.py)
+#### [NEW] [privilege.py](../src/privilege.py)
 - Linux: checks `os.geteuid() == 0`, re-executes with `sudo` if needed
 - Windows: checks `ctypes.windll.shell32.IsUserAnAdmin()`, re-launches with `runas` if needed
 - Logs the privilege escalation event
 
-#### [NEW] [cli.py](file:///c:/Users/Gillsystems%20Laptop/source/repos/OCNGill/Gillsystems-update-ai-engine-software/src/cli.py)
+#### [NEW] [cli.py](../src/cli.py)
 - Rich console output with status panels, progress bars, step-by-step updates
 - Dry-run mode: prints what *would* happen in yellow
 - Summary table at the end: what was updated, versions before/after
 
-#### [NEW] [config.py](file:///c:/Users/Gillsystems%20Laptop/source/repos/OCNGill/Gillsystems-update-ai-engine-software/src/config.py)
+#### [NEW] [config.py](../src/config.py)
 - Pydantic models for configuration
 - Loads from `config/default_config.yaml` with env var overrides
 - Settings: GPU targets, install paths, llama.cpp repo URL, ROCm repo base URL, log level
@@ -238,21 +238,21 @@ gillsystems-update-ai-engine-software/
 
 ---
 
-#### [NEW] [rocm_updater.py](file:///c:/Users/Gillsystems%20Laptop/source/repos/OCNGill/Gillsystems-update-ai-engine-software/src/linux/rocm_updater.py)
+#### [NEW] [rocm_updater.py](../src/linux/rocm_updater.py)
 - Downloads and installs `amdgpu-install` package for detected distro
 - Executes `sudo amdgpu-install --usecase=rocm,hiplibsdk -y`
 - Adds user to `render` and `video` groups
 - Determines if reboot is required (kernel driver change)
 - Validates post-install: `rocm-smi`, `hipcc --version`, `rocminfo`
 
-#### [NEW] [llama_builder.py](file:///c:/Users/Gillsystems%20Laptop/source/repos/OCNGill/Gillsystems-update-ai-engine-software/src/linux/llama_builder.py) (Linux)
+#### [NEW] [llama_builder.py](../src/linux/llama_builder.py) (Linux)
 - Clones or pulls `ggml-org/llama.cpp`
 - Configures CMake with `GGML_HIP=ON`, `AMDGPU_TARGETS` from `gpu_detect`
 - Builds with `cmake --build . -j$(nproc)`
 - Installs binaries to configured path
 - Validates: runs `llama-cli --version` or a quick benchmark
 
-#### [NEW] [reboot_handler.py](file:///c:/Users/Gillsystems%20Laptop/source/repos/OCNGill/Gillsystems-update-ai-engine-software/src/linux/reboot_handler.py) (Linux)
+#### [NEW] [reboot_handler.py](../src/linux/reboot_handler.py) (Linux)
 - Creates a transient systemd service (`gillsystems-ai-stack-updater-resume.service`) that runs once on next boot
 - Service invokes `update-ai-stack.sh --resume`
 - After resume completes, the service self-disables and deletes
@@ -264,21 +264,21 @@ gillsystems-update-ai-engine-software/
 
 ---
 
-#### [NEW] [hip_updater.py](file:///c:/Users/Gillsystems%20Laptop/source/repos/OCNGill/Gillsystems-update-ai-engine-software/src/windows/hip_updater.py)
+#### [NEW] [hip_updater.py](../src/windows/hip_updater.py)
 - Downloads latest HIP SDK installer from AMD
 - Executes silent install: `HIP-SDK-Installer.exe /S /v/qn`
 - Updates `PATH`, `HIP_PATH`, and `ROCM_PATH` environment variables
 - Determines if reboot is required
 - Validates post-install: `hipcc --version`, `hipInfo`
 
-#### [NEW] [llama_builder.py](file:///c:/Users/Gillsystems%20Laptop/source/repos/OCNGill/Gillsystems-update-ai-engine-software/src/windows/llama_builder.py) (Windows)
+#### [NEW] [llama_builder.py](../src/windows/llama_builder.py) (Windows)
 - Detects VS Build Tools / VS Developer Command Prompt
 - Clones or pulls `ggml-org/llama.cpp`
 - Configures CMake with HIP backend and correct `AMDGPU_TARGETS`
 - Builds with Ninja or MSBuild
 - Installs binaries to configured path
 
-#### [NEW] [reboot_handler.py](file:///c:/Users/Gillsystems%20Laptop/source/repos/OCNGill/Gillsystems-update-ai-engine-software/src/windows/reboot_handler.py) (Windows)
+#### [NEW] [reboot_handler.py](../src/windows/reboot_handler.py) (Windows)
 - Creates a one-shot Scheduled Task via `schtasks /create` that runs at logon
 - Task executes `update-ai-stack.bat --resume`
 - After resume, the task self-deletes
@@ -290,7 +290,7 @@ gillsystems-update-ai-engine-software/
 
 ---
 
-#### [NEW] [update-ai-stack.bat](file:///c:/Users/Gillsystems%20Laptop/source/repos/OCNGill/Gillsystems-update-ai-engine-software/update-ai-stack.bat)
+#### [NEW] [update-ai-stack.bat](../update-ai-stack.bat)
 ```batch
 @echo off
 :: Gillsystems AI Stack Updater — Windows Launcher
@@ -307,7 +307,7 @@ cd /d "%~dp0"
 python src\main.py %*
 ```
 
-#### [NEW] [update-ai-stack.sh](file:///c:/Users/Gillsystems%20Laptop/source/repos/OCNGill/Gillsystems-update-ai-engine-software/update-ai-stack.sh)
+#### [NEW] [update-ai-stack.sh](../update-ai-stack.sh)
 ```bash
 #!/usr/bin/env bash
 # Gillsystems AI Stack Updater — Linux Launcher
