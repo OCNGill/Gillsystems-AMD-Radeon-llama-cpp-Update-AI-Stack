@@ -51,6 +51,11 @@ _HIP_SDK_QUARTER_SUFFIXES = ("Win11", "Win10-Win11")
 # Hard cap on HTTP probes so a dead network cannot stall the update cycle.
 _MAX_INSTALLER_PROBES = 12
 
+# AMD's installer writes its result code to the -log file. Tolerant pattern:
+# the log is a human-readable text file whose exact wording is not
+# contractual, so the last "result code"-style line wins.
+_INSTALLER_RESULT_CODE_RE = re.compile(r"result\s*code\s*[:=]?\s*(-?\d+)", re.IGNORECASE)
+
 # Uninstall registry key holding the "AMD Software" package entry.
 _UNINSTALL_KEY = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
 
@@ -252,15 +257,31 @@ class HIPUpdater:
         the driver as well, which is why the display driver version is
         captured before and after the run.
 
+        AMD also documents ``-install -boot`` (silent install with auto
+        reboot). It is deliberately NOT used here: the reboot it triggers
+        happens from inside the installer, before the application has written
+        its reboot handoff and registered the resume-on-boot task. The node
+        would come back with neither, so the update chain (llama.cpp build)
+        would never resume. The reboot is instead requested from the caller
+        (this method returns True), and the application performs it only
+        after the handoff file and the resume task are safely in place.
+
+        The install result code is read from the ``-log`` file, because AMD's
+        CLI may exit 0 while still requiring a reboot, and a swapped display
+        driver always requires one.
+
         Returns:
             True if a reboot is required.
         """
         # AMD's real silent-install flags. NSIS/MSI flags are NOT used.
+        # The -log path must be local to the machine.
         log_path = Path(tempfile.gettempdir()) / "amd_hip_sdk_install.log"
+        # Remove a stale log so an old result code is never misread.
+        try:
+            log_path.unlink()
+        except OSError:
+            pass
         cmd = [str(installer_path), "-install", "-log", str(log_path)]
-        if self.cfg.behavior.auto_reboot:
-            # Auto-reboot is only acceptable when the caller allows it.
-            cmd.insert(2, "-boot")
 
         print_step(f"Running silent install: {installer_path.name}")
 
@@ -286,20 +307,28 @@ class HIPUpdater:
         except subprocess.TimeoutExpired:
             raise RuntimeError("HIP SDK installer timed out after 15 minutes.")
 
-        # Exit code 3010 = success with reboot required (MSI convention)
-        if result.returncode == 3010:
+        exit_code = result.returncode
+        log_code = _read_installer_result_code(log_path)
+        if log_code is not None and log_code != exit_code:
+            print_info(f"Installer log result code: {log_code}")
+
+        driver_changed = self._report_display_driver_change(package_before, driver_before)
+
+        # Exit code 3010 = success with reboot required (MSI convention).
+        # A replaced display driver also always needs a reboot to take effect.
+        if exit_code == 3010 or log_code == 3010:
             print_warning("HIP SDK installed — reboot required.")
-            self._report_display_driver_change(package_before, driver_before)
             return True
-        elif result.returncode == 0:
+        elif exit_code == 0 and log_code in (None, 0):
             print_success(
                 f"HIP SDK installer completed successfully (release: {version or 'unknown'})."
             )
-            self._report_display_driver_change(package_before, driver_before)
-            return False
+            return driver_changed
         else:
+            code = exit_code if exit_code != 0 else log_code
             raise RuntimeError(
-                f"HIP SDK installer exited with code {result.returncode}. "
+                f"HIP SDK installer exited with code {code}. "
+                f"Installer log: {log_path}. "
                 "Check Windows Event Viewer for details."
             )
 
@@ -307,13 +336,17 @@ class HIPUpdater:
         self,
         package_before: Optional[str],
         driver_before: Optional[str],
-    ) -> None:
+    ) -> bool:
         """
         Warn loudly if the automatic install replaced the consumer display driver.
 
         Args:
             package_before: "AMD Software" package version recorded before the install.
             driver_before: active display driver version recorded before the install.
+
+        Returns:
+            True if the active display driver version changed. A swapped
+            display driver only takes effect after a reboot.
         """
         package_after = _read_amd_software_package_version()
         driver_after = _read_display_driver_version()
@@ -329,8 +362,11 @@ class HIPUpdater:
                 "consumer display driver. This affects FSR and game performance — "
                 "reinstall your consumer driver to restore it."
             )
+            return True
         elif driver_before and driver_after and driver_before == driver_after:
             print_info(f"Display driver unchanged: {driver_after}")
+
+        return False
 
     # ------------------------------------------------------------------
     # Environment variables
@@ -493,14 +529,55 @@ def _read_amd_software_package_version() -> Optional[str]:
     return None
 
 
+def _read_installer_result_code(log_path: Path) -> Optional[int]:
+    """
+    Read the install result code AMD's installer wrote to its ``-log`` file.
+
+    AMD's CLI reports the install result code in the log file, and the
+    process exit code alone is not sufficient: the installer can exit 0
+    while still requiring a reboot (code 3010).
+
+    Args:
+        log_path: path of the ``-log`` file passed to the installer.
+
+    Returns:
+        The result code as an int, or None if the log is missing or does
+        not contain a recognisable result code.
+    """
+    try:
+        text = log_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+    matches = _INSTALLER_RESULT_CODE_RE.findall(text)
+    if not matches:
+        return None
+
+    try:
+        return int(matches[-1])
+    except ValueError:
+        return None
+
+
 def _read_display_driver_version() -> Optional[str]:
     """
     Read the active display adapter driver version without WMI.
 
-    Uses the stdlib ``ctypes`` route into SetupAPI: enumerates the present
-    display-class devices and reads ``SPDRP_DRIVERVERSION`` for the AMD
-    adapter (PCI vendor VEN_1002). Falls back to the "AMD Software" uninstall
-    entry's DisplayVersion when SetupAPI is unavailable or returns nothing.
+    Two sources are tried, in order:
+
+    1. The display class registry key
+       ``HKLM\\SYSTEM\\CurrentControlSet\\Control\\Class\\{GUID_DEVCLASS_DISPLAY}``.
+       Each adapter instance is a subkey whose ``MatchingDeviceId`` identifies
+       the PCI device; the AMD adapter is the one whose id contains
+       ``VEN_1002``. Its ``DriverVersion`` is the real, currently loaded
+       driver version (e.g. ``31.0.21923.11000``).
+    2. SetupAPI's ``SPDRP_DRIVERVERSION`` for the same adapter.
+
+    The "AMD Software" uninstall entry is deliberately NOT used as a
+    fallback: its ``DisplayVersion`` is the package version (e.g.
+    ``25.8.1``), which is a different value from the display driver
+    version. Conflating the two would make the driver-change check
+    compare package versions instead of driver versions.
 
     Returns:
         The driver version string, or None if it could not be determined.
@@ -508,11 +585,61 @@ def _read_display_driver_version() -> Optional[str]:
     if sys.platform != "win32":
         return None
 
-    version = _read_display_driver_version_setupapi()
+    version = _read_display_driver_version_registry()
     if version:
         return version
 
-    return _read_amd_software_package_version()
+    return _read_display_driver_version_setupapi()
+
+
+def _read_display_driver_version_registry() -> Optional[str]:
+    """
+    Read the AMD display driver version from the display class registry key.
+
+    Returns:
+        The driver version string, or None if the key or the AMD adapter
+        entry could not be read.
+    """
+    if sys.platform != "win32":
+        return None
+
+    try:
+        import winreg
+    except ImportError:  # pragma: no cover - non-Windows
+        return None
+
+    class_key = rf"SYSTEM\CurrentControlSet\Control\Class\{_GUID_DEVCLASS_DISPLAY}"
+    try:
+        root = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, class_key, 0, winreg.KEY_READ)
+    except OSError:
+        return None
+
+    try:
+        subkey_count = winreg.QueryInfoKey(root)[0]
+        for index in range(subkey_count):
+            try:
+                subkey_name = winreg.EnumKey(root, index)
+            except OSError:
+                continue
+            try:
+                with winreg.OpenKey(root, subkey_name, 0, winreg.KEY_READ) as subkey:
+                    try:
+                        matching_id = str(winreg.QueryValueEx(subkey, "MatchingDeviceId")[0])
+                    except OSError:
+                        continue
+                    if "VEN_1002" not in matching_id.upper():
+                        continue
+                    try:
+                        driver_version = str(winreg.QueryValueEx(subkey, "DriverVersion")[0])
+                    except OSError:
+                        continue
+                    return driver_version.strip() or None
+            except OSError:
+                continue
+    finally:
+        winreg.CloseKey(root)
+
+    return None
 
 
 def _read_display_driver_version_setupapi() -> Optional[str]:

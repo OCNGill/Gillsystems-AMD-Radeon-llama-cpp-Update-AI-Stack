@@ -1,5 +1,40 @@
 ---
 
+## 2026-10-21 — HIP SDK installer: reboot ordering, log result code, true driver version
+
+Refinement of `src/windows/hip_updater.py` on top of `f9eaebf`. Three defects
+found by review of the silent-install path:
+
+1. **`-boot` was requested inside the installer.** AMD's `-install -boot`
+   reboots from *inside* the installer, before this application has written
+   its reboot handoff file and registered the resume-on-boot task. The node
+   would return with neither, and the update chain (llama.cpp HIP build)
+   would never resume. `-boot` is now never passed; the reboot is requested
+   by the caller only after the handoff and resume task are in place.
+2. **The install result code was read from the process exit code alone.**
+   AMD's CLI can exit 0 while still requiring a reboot (code 3010), and a
+   swapped display driver always requires one. The `-log` file is now parsed
+   for the result code, and a stale log is deleted before each run so an old
+   code can never be misread.
+3. **The display-driver version was conflated with the package version.**
+   The old fallback returned the "AMD Software" package version (`26.10.1`)
+   as if it were the driver version. The driver version is now read from the
+   display class registry key
+   (`HKLM\SYSTEM\CurrentControlSet\Control\Class\{GUID_DEVCLASS_DISPLAY}`,
+   adapter `MatchingDeviceId` containing `VEN_1002`), which returns the real
+   loaded driver version (`32.0.32015.7029`). SetupAPI is the secondary
+   source. The package version is no longer used as a driver stand-in.
+
+`_report_display_driver_change()` now returns whether the driver changed, so
+a driver swap forces a reboot request instead of being reported and ignored.
+
+Verified live on Main (RX 7900 XTX, consumer Adrenalin preserved):
+package `26.10.1` / driver `32.0.32015.7029` read distinctly; log result code
+`3010` parsed, `None` for a log with no code and for a missing log. Full suite
+152 passed.
+
+*"The heart of the righteous studieth to answer."* — Proverbs 15:28 (ESV)
+
 ## v2.6.1 — 2026-10-21 — Round 9: Junction-Safe Install, Real AMD Installer CLI, HIP SDK Component Hygiene
 
 ### Summary
