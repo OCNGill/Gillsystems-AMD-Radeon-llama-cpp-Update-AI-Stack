@@ -76,9 +76,19 @@ def test_configure_cmake_disables_rocwmma_when_header_missing(tmp_path: Path) ->
 
     captured: list[list[str]] = []
 
+    def fake_run(cmd, timeout=3600, env=None):
+        captured.append(list(cmd))
+        # A real cmake configure always writes a cache; the builder reads it
+        # back to prove HIP is still enabled.
+        builder.build_dir.mkdir(parents=True, exist_ok=True)
+        (builder.build_dir / "CMakeCache.txt").write_text(
+            "GGML_HIP:BOOL=ON\n", encoding="utf-8"
+        )
+        return 0
+
     with patch("src.windows.llama_builder.shutil.which", side_effect=_fake_which(hip_root)), \
          patch("src.windows.llama_builder._find_hip_path", return_value=str(hip_root)), \
-         patch("src.windows.llama_builder._run", side_effect=lambda cmd, timeout=3600, env=None: captured.append(cmd)):
+         patch("src.windows.llama_builder._run", side_effect=fake_run):
         builder._configure_cmake()
 
     assert captured
@@ -100,9 +110,19 @@ def test_configure_cmake_enables_rocwmma_when_header_exists(tmp_path: Path) -> N
 
     captured: list[list[str]] = []
 
+    def fake_run(cmd, timeout=3600, env=None):
+        captured.append(list(cmd))
+        # A real cmake configure always writes a cache; the builder reads it
+        # back to prove HIP is still enabled.
+        builder.build_dir.mkdir(parents=True, exist_ok=True)
+        (builder.build_dir / "CMakeCache.txt").write_text(
+            "GGML_HIP:BOOL=ON\n", encoding="utf-8"
+        )
+        return 0
+
     with patch("src.windows.llama_builder.shutil.which", side_effect=_fake_which(hip_root)), \
          patch("src.windows.llama_builder._find_hip_path", return_value=str(hip_root)), \
-         patch("src.windows.llama_builder._run", side_effect=lambda cmd, timeout=3600, env=None: captured.append(cmd)):
+         patch("src.windows.llama_builder._run", side_effect=fake_run):
         builder._configure_cmake()
 
     assert captured
@@ -542,3 +562,103 @@ def test_validate_accepts_a_working_gpu_backend(tmp_path: Path) -> None:
          patch("src.windows.llama_builder._find_hip_path", return_value=None), \
          patch("src.windows.llama_builder.subprocess.run", side_effect=fake_run):
         builder._validate()
+
+
+def test_configure_cmake_reconfigures_when_cache_is_unreadable(tmp_path: Path) -> None:
+    """A missing/unreadable CMake cache is "unknown", never "off" and never
+    "fine to ignore". The builder must re-configure and prove HIP is on."""
+    cfg = _make_cfg(tmp_path)
+    builder = LlamaBuilderWindows(cfg, ["gfx1100"])
+    builder._use_ninja = True
+    builder.build_dir = tmp_path / "build-hip-win"
+    builder.build_dir.mkdir(parents=True, exist_ok=True)
+
+    hip_root = tmp_path / "rocm"
+    (hip_root / "bin").mkdir(parents=True)
+
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, timeout=3600, env=None):
+        calls.append(list(cmd))
+        # First configure leaves NO cache at all (unreadable -> "unknown").
+        # The re-configure writes a cache that reports GGML_HIP=ON.
+        cache = builder.build_dir / "CMakeCache.txt"
+        if len(calls) > 1:
+            cache.write_text("GGML_HIP:BOOL=ON\n", encoding="utf-8")
+        else:
+            if cache.exists():
+                cache.unlink()
+        return 0
+
+    with patch("src.windows.llama_builder.shutil.which", side_effect=_fake_which(hip_root)), \
+         patch("src.windows.llama_builder._find_hip_path", return_value=str(hip_root)), \
+         patch("src.windows.llama_builder._hip_has_rocwmma", return_value=True), \
+         patch("src.windows.llama_builder._build_env", return_value=None), \
+         patch("src.windows.llama_builder._run", side_effect=fake_run):
+        builder._configure_cmake()
+
+    assert len(calls) == 2, f"expected a re-configure, got {len(calls)} cmake runs"
+    assert "-DGGML_HIP=ON" in calls[1]
+
+
+def test_configure_cmake_raises_when_cache_stays_unknown_after_reconfigure(tmp_path: Path) -> None:
+    """If the cache is still unreadable after the repair attempt, the builder
+    must refuse to build rather than assume HIP is enabled."""
+    cfg = _make_cfg(tmp_path)
+    builder = LlamaBuilderWindows(cfg, ["gfx1100"])
+    builder._use_ninja = True
+    builder.build_dir = tmp_path / "build-hip-win"
+    builder.build_dir.mkdir(parents=True, exist_ok=True)
+
+    hip_root = tmp_path / "rocm"
+    (hip_root / "bin").mkdir(parents=True)
+
+    def fake_run(cmd, timeout=3600, env=None):
+        cache = builder.build_dir / "CMakeCache.txt"
+        if cache.exists():
+            cache.unlink()
+        return 0
+
+    with patch("src.windows.llama_builder.shutil.which", side_effect=_fake_which(hip_root)), \
+         patch("src.windows.llama_builder._find_hip_path", return_value=str(hip_root)), \
+         patch("src.windows.llama_builder._hip_has_rocwmma", return_value=True), \
+         patch("src.windows.llama_builder._build_env", return_value=None), \
+         patch("src.windows.llama_builder._run", side_effect=fake_run):
+        with pytest.raises(RuntimeError, match="GGML_HIP=ON"):
+            builder._configure_cmake()
+
+
+def test_install_raises_when_hip_backend_artifact_is_missing(tmp_path: Path) -> None:
+    """A CPU-only build installs cleanly and ships no ggml-hip.dll. The
+    install step must refuse to report success in that case."""
+    cfg = _make_cfg(tmp_path)
+    builder = LlamaBuilderWindows(cfg, ["gfx1100"])
+    builder.use_hip = True
+    builder.build_dir = tmp_path / "build-hip-win"
+    builder.build_dir.mkdir(parents=True, exist_ok=True)
+    builder.install_dir = tmp_path / "install"
+    (builder.install_dir / "bin").mkdir(parents=True, exist_ok=True)
+
+    with patch("src.windows.llama_builder._run", return_value=0), \
+         patch("src.windows.llama_builder._find_hip_path", return_value=None), \
+         patch("src.windows.llama_builder._mirror_install_bin_tree", return_value=None):
+        with pytest.raises(RuntimeError, match="HIP backend artifact is missing"):
+            builder._install()
+
+
+def test_install_accepts_a_real_hip_backend_artifact(tmp_path: Path) -> None:
+    """The positive path: a real ggml-hip.dll in the install tree passes."""
+    cfg = _make_cfg(tmp_path)
+    builder = LlamaBuilderWindows(cfg, ["gfx1100"])
+    builder.use_hip = True
+    builder.build_dir = tmp_path / "build-hip-win"
+    builder.build_dir.mkdir(parents=True, exist_ok=True)
+    builder.install_dir = tmp_path / "install"
+    install_bin = builder.install_dir / "bin"
+    install_bin.mkdir(parents=True, exist_ok=True)
+    (install_bin / "ggml-hip.dll").write_bytes(b"MZ")
+
+    with patch("src.windows.llama_builder._run", return_value=0), \
+         patch("src.windows.llama_builder._find_hip_path", return_value=None), \
+         patch("src.windows.llama_builder._mirror_install_bin_tree", return_value=None):
+        builder._install()

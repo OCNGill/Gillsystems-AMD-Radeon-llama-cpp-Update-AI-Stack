@@ -255,19 +255,28 @@ class LlamaBuilderWindows:
         # still "succeeds", leaving a stale ggml-hip.dll that no longer matches
         # the rebuilt ggml.dll -- the GPU backend then refuses to register.
         # Detect it and re-configure from a clean cache so the HIP flags stick.
-        if use_hip and self._hip_backend_cache_state() == "off":
+        if use_hip and self._hip_backend_cache_state() in ("off", "unknown"):
             print_warning(
                 "CMake cache does not report GGML_HIP=ON after configure "
-                "(the cache was invalidated by a compiler change). "
-                "Re-configuring with a clean cache so the HIP backend is built."
+                "(the cache was invalidated by a compiler change, or it is "
+                "unreadable). Re-configuring with a clean cache so the HIP "
+                "backend is built."
             )
             cache_file = self.build_dir / "CMakeCache.txt"
             if cache_file.exists():
                 cache_file.unlink()
             _run(cmake_args, env=env)
-            if self._hip_backend_cache_state() == "off":
+            cache_state = self._hip_backend_cache_state()
+            if cache_state != "on":
+                reason = (
+                    "GGML_HIP=OFF"
+                    if cache_state == "off"
+                    else "the GGML_HIP entry is missing or unreadable"
+                )
                 raise RuntimeError(
-                    "CMake still reports GGML_HIP=OFF after a clean re-configure. "
+                    "CMake cache still does not report GGML_HIP=ON after a "
+                    f"clean re-configure ({reason}, cache state: {cache_state}). "
+                    "The HIP configure was lost and the build would be CPU-only. "
                     "Refusing to build a CPU-only llama.cpp."
                 )
             print_success("Re-configured with a clean cache; HIP backend is enabled.")
@@ -416,6 +425,12 @@ class LlamaBuilderWindows:
         if mirrored_bin_dir:
             print_info(f"Mirrored installed binaries into {mirrored_bin_dir}.")
 
+        # The HIP backend must be a real artifact in the install tree. Without
+        # this check a build that lost -DGGML_HIP=ON installs cleanly, ships no
+        # ggml-hip.dll, and only fails much later when the GPU never registers.
+        if self.use_hip:
+            self._verify_hip_backend_artifact()
+
     # ------------------------------------------------------------------
     # Validate
     # ------------------------------------------------------------------
@@ -435,6 +450,29 @@ class LlamaBuilderWindows:
         if not match:
             return "unknown"
         return "on" if match.group(1).upper() == "ON" else "off"
+
+    def _verify_hip_backend_artifact(self) -> None:
+        """Require the HIP backend shared library in the install tree.
+
+        A CPU-only build installs and runs perfectly, so the only way to know
+        the HIP backend was really compiled is to look for its artifact. This
+        mirrors the Linux builder's ``_verify_hip_backend_artifact`` check.
+        """
+        patterns = ("ggml-hip.dll", "ggml-hip*.dll")
+        search_dirs = (self.install_dir / "bin", self.install_dir / "lib")
+        for directory in search_dirs:
+            if not directory.is_dir():
+                continue
+            for pattern in patterns:
+                if any(directory.glob(pattern)):
+                    print_success(f"HIP backend artifact present in {directory}.")
+                    return
+        expected = ", ".join(str(d / p) for d in search_dirs for p in patterns[:1])
+        raise RuntimeError(
+            "The HIP backend artifact is missing from the install tree. "
+            f"Expected one of: {expected}. The build was CPU-only even though "
+            "HIP was requested. Refusing to report a successful update."
+        )
 
     def _verify_gpu_backend(self, runtime_env: dict) -> bool:
         """Prove the GPU backend actually runs kernels on the device.
