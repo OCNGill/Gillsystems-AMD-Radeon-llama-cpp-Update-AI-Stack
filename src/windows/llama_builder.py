@@ -10,6 +10,7 @@ import logging
 import os
 import shutil
 import stat
+import re
 import subprocess
 from pathlib import Path
 from typing import List, Optional
@@ -248,6 +249,29 @@ class LlamaBuilderWindows:
         _run(cmake_args, env=env)
         print_success("CMake configuration complete.")
 
+        # A HIP SDK upgrade swaps clang (e.g. 7.1 -> 7.2). CMake reacts by
+        # deleting its own cache and re-running configure, and that re-configure
+        # can silently drop -DGGML_HIP=ON. The result is a CPU-only build that
+        # still "succeeds", leaving a stale ggml-hip.dll that no longer matches
+        # the rebuilt ggml.dll -- the GPU backend then refuses to register.
+        # Detect it and re-configure from a clean cache so the HIP flags stick.
+        if use_hip and self._hip_backend_cache_state() == "off":
+            print_warning(
+                "CMake cache does not report GGML_HIP=ON after configure "
+                "(the cache was invalidated by a compiler change). "
+                "Re-configuring with a clean cache so the HIP backend is built."
+            )
+            cache_file = self.build_dir / "CMakeCache.txt"
+            if cache_file.exists():
+                cache_file.unlink()
+            _run(cmake_args, env=env)
+            if self._hip_backend_cache_state() == "off":
+                raise RuntimeError(
+                    "CMake still reports GGML_HIP=OFF after a clean re-configure. "
+                    "Refusing to build a CPU-only llama.cpp."
+                )
+            print_success("Re-configured with a clean cache; HIP backend is enabled.")
+
     # ------------------------------------------------------------------
     # Build
     # ------------------------------------------------------------------
@@ -396,6 +420,76 @@ class LlamaBuilderWindows:
     # Validate
     # ------------------------------------------------------------------
 
+    def _hip_backend_cache_state(self) -> str:
+        """Return "on", "off" or "unknown" for the CMake cache's HIP flag.
+
+        "unknown" means CMake never wrote a cache we can read (or the entry is
+        absent), so there is nothing to enforce.
+        """
+        cache_file = self.build_dir / "CMakeCache.txt"
+        try:
+            content = cache_file.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return "unknown"
+        match = re.search(r"^GGML_HIP:BOOL=(\w+)", content, re.MULTILINE)
+        if not match:
+            return "unknown"
+        return "on" if match.group(1).upper() == "ON" else "off"
+
+    def _verify_gpu_backend(self, runtime_env: dict) -> bool:
+        """Prove the GPU backend actually runs kernels on the device.
+
+        A CPU-only build passes every --version check, so the only honest test
+        is to run a real kernel on the GPU and look for the device by name.
+        """
+        if not self.use_hip:
+            return True
+
+        ops = self.install_dir / "bin" / "test-backend-ops.exe"
+        if ops.exists():
+            try:
+                result = subprocess.run(
+                    [str(ops), "-b", "ROCm0", "-o", "ADD"],
+                    capture_output=True,
+                    text=True,
+                    timeout=180,
+                    env=runtime_env,
+                )
+            except Exception as exc:
+                print_warning(f"ROCm backend probe could not run: {exc}")
+                return False
+            output = (result.stdout or "") + (result.stderr or "")
+            if result.returncode == 0 and "ROCm" in output and not re.search(r"\bFAIL\b", output):
+                print_success("ROCm0 backend verified: ADD kernel executed on the GPU.")
+                return True
+            print_warning(
+                "ROCm0 backend probe did not pass -- the GPU backend is not usable."
+            )
+            return False
+
+        cli = self.install_dir / "bin" / "llama-cli.exe"
+        if cli.exists():
+            try:
+                result = subprocess.run(
+                    [str(cli), "--list-devices"],
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                    env=runtime_env,
+                )
+            except Exception as exc:
+                print_warning(f"Could not enumerate devices via llama-cli: {exc}")
+                return False
+            output = (result.stdout or "") + (result.stderr or "")
+            if re.search(r"(AMD|Radeon|ROCm)", output, re.IGNORECASE):
+                print_success("GPU device enumerated via llama-cli --list-devices.")
+                return True
+            print_warning("llama-cli --list-devices showed no AMD/ROCm device.")
+            return False
+
+        print_warning("No probe binary available to verify the GPU backend.")
+        return False
+
     def _validate(self) -> None:
         if self.cfg.behavior.dry_run:
             print_dry_run("Would validate: llama-cli.exe --version")
@@ -435,8 +529,17 @@ class LlamaBuilderWindows:
                     print_warning(f"Could not run {binary}: {exc}")
 
         if not validated_binary:
-            print_warning("Could not validate llama.cpp binary — check installation manually.")
-            return
+            raise RuntimeError(
+                "No llama.cpp binary in the install tree could be executed "
+                "(--version failed). The installation is not usable."
+            )
+
+        if not self._verify_gpu_backend(runtime_env):
+            raise RuntimeError(
+                "llama.cpp was installed but no ROCm device could be verified. "
+                "The build is CPU-only or the GPU backend failed to register. "
+                "Refusing to report a successful update."
+            )
 
         mtp_check_binary = next(
             (

@@ -423,3 +423,122 @@ def test_mirror_install_bin_tree_replaces_junction_source_bin(tmp_path: Path) ->
     assert not windows_llama_builder._is_reparse_point(source_bin)
     assert (source_bin / "llama-server.exe").exists()
     assert (link_target / "keep-me.txt").exists()
+
+
+def test_configure_cmake_reconfigures_when_cache_drops_hip_flag(tmp_path: Path) -> None:
+    """A HIP SDK upgrade changes the compiler; CMake then wipes its cache and
+    re-runs configure, which can silently lose -DGGML_HIP=ON. The builder must
+    detect the CPU-only cache and re-configure from a clean cache."""
+    cfg = _make_cfg(tmp_path)
+    builder = LlamaBuilderWindows(cfg, ["gfx1100"])
+    builder._use_ninja = True
+    builder.build_dir = tmp_path / "build-hip-win"
+    builder.build_dir.mkdir(parents=True, exist_ok=True)
+
+    hip_root = tmp_path / "rocm"
+    (hip_root / "bin").mkdir(parents=True)
+
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, timeout=3600, env=None):
+        calls.append(list(cmd))
+        # First configure writes a CPU-only cache (the regression).
+        # The re-configure (after the cache file is deleted) writes GGML_HIP=ON.
+        cache = builder.build_dir / "CMakeCache.txt"
+        hip_on = len(calls) > 1
+        cache.write_text(
+            "CMAKE_BUILD_TYPE:STRING=Release\n"
+            + ("GGML_HIP:BOOL=ON\n" if hip_on else "GGML_HIP:BOOL=OFF\n"),
+            encoding="utf-8",
+        )
+        return 0
+
+    with patch("src.windows.llama_builder.shutil.which", side_effect=_fake_which(hip_root)), \
+         patch("src.windows.llama_builder._find_hip_path", return_value=str(hip_root)), \
+         patch("src.windows.llama_builder._hip_has_rocwmma", return_value=True), \
+         patch("src.windows.llama_builder._build_env", return_value=None), \
+         patch("src.windows.llama_builder._run", side_effect=fake_run):
+        builder._configure_cmake()
+
+    assert len(calls) == 2, f"expected a re-configure, got {len(calls)} cmake runs"
+    assert "-DGGML_HIP=ON" in calls[1]
+
+
+def test_configure_cmake_raises_when_hip_stays_off_after_reconfigure(tmp_path: Path) -> None:
+    """If the cache still says GGML_HIP=OFF after a clean re-configure, the
+    builder must refuse to build a CPU-only llama.cpp."""
+    cfg = _make_cfg(tmp_path)
+    builder = LlamaBuilderWindows(cfg, ["gfx1100"])
+    builder._use_ninja = True
+    builder.build_dir = tmp_path / "build-hip-win"
+    builder.build_dir.mkdir(parents=True, exist_ok=True)
+
+    hip_root = tmp_path / "rocm"
+    (hip_root / "bin").mkdir(parents=True)
+
+    def fake_run(cmd, timeout=3600, env=None):
+        (builder.build_dir / "CMakeCache.txt").write_text(
+            "GGML_HIP:BOOL=OFF\n", encoding="utf-8"
+        )
+        return 0
+
+    with patch("src.windows.llama_builder.shutil.which", side_effect=_fake_which(hip_root)), \
+         patch("src.windows.llama_builder._find_hip_path", return_value=str(hip_root)), \
+         patch("src.windows.llama_builder._hip_has_rocwmma", return_value=True), \
+         patch("src.windows.llama_builder._build_env", return_value=None), \
+         patch("src.windows.llama_builder._run", side_effect=fake_run):
+        with pytest.raises(RuntimeError, match="GGML_HIP=OFF"):
+            builder._configure_cmake()
+
+
+def test_validate_raises_when_gpu_backend_is_not_usable(tmp_path: Path) -> None:
+    """A CPU-only install passes every --version check, so validation must
+    prove the GPU backend actually runs a kernel before reporting success."""
+    cfg = _make_cfg(tmp_path)
+    builder = LlamaBuilderWindows(cfg, ["gfx1100"])
+    builder.use_hip = True
+
+    bin_dir = tmp_path / "install" / "bin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    (bin_dir / "llama-cli.exe").write_bytes(b"MZ")
+    (bin_dir / "test-backend-ops.exe").write_bytes(b"MZ")
+
+    def fake_run(cmd, **kwargs):
+        if "--version" in cmd:
+            return subprocess.CompletedProcess(cmd, 0, "version: 0.7.0-dev", "")
+        # GPU probe: no ROCm device found.
+        return subprocess.CompletedProcess(
+            cmd, 0, "Available devices:\n  CPU\n", ""
+        )
+
+    with patch.dict("src.windows.llama_builder.os.environ", {}, clear=True), \
+         patch("src.windows.llama_builder._find_hip_path", return_value=None), \
+         patch("src.windows.llama_builder.subprocess.run", side_effect=fake_run):
+        with pytest.raises(RuntimeError, match="ROCm"):
+            builder._validate()
+
+
+def test_validate_accepts_a_working_gpu_backend(tmp_path: Path) -> None:
+    """The positive path: a real ROCm device probe must let validation pass."""
+    cfg = _make_cfg(tmp_path)
+    builder = LlamaBuilderWindows(cfg, ["gfx1100"])
+    builder.use_hip = True
+
+    bin_dir = tmp_path / "install" / "bin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    (bin_dir / "llama-cli.exe").write_bytes(b"MZ")
+    (bin_dir / "test-backend-ops.exe").write_bytes(b"MZ")
+
+    def fake_run(cmd, **kwargs):
+        if "--version" in cmd:
+            return subprocess.CompletedProcess(cmd, 0, "version: 0.7.0-dev", "")
+        if "test-backend-ops.exe" in cmd[0]:
+            return subprocess.CompletedProcess(
+                cmd, 0, "Backend 0: ROCm0\n  ADD: OK\n1/1 backends passed\n", ""
+            )
+        return subprocess.CompletedProcess(cmd, 0, "help text", "")
+
+    with patch.dict("src.windows.llama_builder.os.environ", {}, clear=True), \
+         patch("src.windows.llama_builder._find_hip_path", return_value=None), \
+         patch("src.windows.llama_builder.subprocess.run", side_effect=fake_run):
+        builder._validate()

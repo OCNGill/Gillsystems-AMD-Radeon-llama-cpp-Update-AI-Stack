@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
@@ -585,3 +586,334 @@ def test_preflight_requires_hipcc_for_tier1(tmp_path: Path) -> None:
     with patch("src.linux.llama_builder.shutil.which", side_effect=fake_which):
         with pytest.raises(RuntimeError, match="Tier 1 hardware REQUIRES the ROCm HIP SDK"):
             builder._preflight_check()
+
+
+# ---------------------------------------------------------------------------
+# HIP configure repair — a CPU-only build must never be reported as success
+# ---------------------------------------------------------------------------
+
+
+def _hip_toolchain(root: Path) -> linux_llama_builder.RocmToolchain:
+    """A synthetic SDK-coherent ROCm toolchain rooted at *root*."""
+    sdk_compiler = root / "lib" / "llvm" / "bin" / "clang++"
+    return linux_llama_builder.RocmToolchain(
+        root=root,
+        hip_path=str(root),
+        hipcxx=str(sdk_compiler),
+        hip_compiler=str(sdk_compiler),
+        sdk_coherent=True,
+        source=str(root),
+    )
+
+
+def _hip_builder(tmp_path: Path, targets: list[str] | None = None) -> LlamaBuilderLinux:
+    cfg = _make_cfg(tmp_path)
+    builder = LlamaBuilderLinux(cfg, targets or ["gfx1100"])
+    builder.use_hip = True
+    builder._use_ninja = True
+    builder.build_dir = tmp_path / "build-hip"
+    builder.build_dir.mkdir(parents=True, exist_ok=True)
+    return builder
+
+
+def test_hip_cache_state_is_tri_state(tmp_path: Path) -> None:
+    """The cache reader reports on/off/unknown and never guesses."""
+    cache = tmp_path / "CMakeCache.txt"
+
+    cache.write_text("GGML_HIP:BOOL=ON\n", encoding="utf-8")
+    assert linux_llama_builder._hip_cache_state(tmp_path) == "on"
+
+    cache.write_text("GGML_HIP:BOOL=OFF\n", encoding="utf-8")
+    assert linux_llama_builder._hip_cache_state(tmp_path) == "off"
+
+    cache.write_text("CMAKE_BUILD_TYPE:STRING=Release\n", encoding="utf-8")
+    assert linux_llama_builder._hip_cache_state(tmp_path) == "unknown"
+
+    cache.unlink()
+    assert linux_llama_builder._hip_cache_state(tmp_path) == "unknown"
+
+
+def test_configure_cmake_reconfigures_when_cache_drops_hip_flag(tmp_path: Path) -> None:
+    """A ROCm SDK upgrade makes CMake re-run configure and silently lose
+    -DGGML_HIP=ON. The builder must notice the CPU-only cache and re-configure
+    with HIP explicitly enabled instead of building a CPU-only llama.cpp."""
+    builder = _hip_builder(tmp_path)
+    toolchain = _hip_toolchain(tmp_path / "rocm-7.2.4")
+
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, timeout=3600, env=None):
+        calls.append(list(cmd))
+        # First configure writes a CPU-only cache (the regression). The
+        # re-configure (after the cache file is deleted) writes GGML_HIP=ON.
+        cache = builder.build_dir / "CMakeCache.txt"
+        hip_on = len(calls) > 1
+        cache.write_text(
+            "CMAKE_BUILD_TYPE:STRING=Release\n"
+            + ("GGML_HIP:BOOL=ON\n" if hip_on else "GGML_HIP:BOOL=OFF\n"),
+            encoding="utf-8",
+        )
+        return 0
+
+    with patch("src.linux.llama_builder._resolve_rocm_toolchain", return_value=toolchain), \
+         patch("src.linux.llama_builder._run", side_effect=fake_run):
+        builder._configure_cmake()
+
+    assert len(calls) == 2, f"expected a re-configure, got {len(calls)} cmake runs"
+    assert "-DGGML_HIP=ON" in calls[1]
+    assert "-DAMDGPU_TARGETS=gfx1100" in calls[1]
+    assert f"-DCMAKE_INSTALL_PREFIX={builder.install_dir}" in calls[1]
+
+
+def test_configure_cmake_raises_when_hip_stays_off_after_reconfigure(tmp_path: Path) -> None:
+    """If the cache still says GGML_HIP=OFF after a clean re-configure, the
+    builder must refuse to build a CPU-only llama.cpp."""
+    builder = _hip_builder(tmp_path)
+    toolchain = _hip_toolchain(tmp_path / "rocm-7.2.4")
+
+    def fake_run(cmd, timeout=3600, env=None):
+        (builder.build_dir / "CMakeCache.txt").write_text(
+            "GGML_HIP:BOOL=OFF\n", encoding="utf-8"
+        )
+        return 0
+
+    with patch("src.linux.llama_builder._resolve_rocm_toolchain", return_value=toolchain), \
+         patch("src.linux.llama_builder._run", side_effect=fake_run):
+        with pytest.raises(RuntimeError, match="GGML_HIP"):
+            builder._configure_cmake()
+
+
+def test_configure_cmake_passes_sdk_rocm_path_and_hip_compiler(tmp_path: Path) -> None:
+    """An SDK-coherent toolchain must pin the compile-time ROCm to the same
+    generation as the deployed runtime."""
+    builder = _hip_builder(tmp_path)
+    sdk_root = tmp_path / "rocm-7.2.4"
+    toolchain = _hip_toolchain(sdk_root)
+
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, timeout=3600, env=None):
+        calls.append(list(cmd))
+        (builder.build_dir / "CMakeCache.txt").write_text(
+            "GGML_HIP:BOOL=ON\n", encoding="utf-8"
+        )
+        return 0
+
+    with patch("src.linux.llama_builder._resolve_rocm_toolchain", return_value=toolchain), \
+         patch("src.linux.llama_builder._run", side_effect=fake_run):
+        builder._configure_cmake()
+
+    assert len(calls) == 1
+    assert f"-DROCM_PATH={sdk_root}" in calls[0]
+    assert f"-DCMAKE_HIP_COMPILER={sdk_root / 'lib' / 'llvm' / 'bin' / 'clang++'}" in calls[0]
+
+
+# ---------------------------------------------------------------------------
+# HIP validation — a CPU-only install must not be reported as a success
+# ---------------------------------------------------------------------------
+
+
+def _hip_install_tree(tmp_path: Path) -> LlamaBuilderLinux:
+    builder = _hip_builder(tmp_path)
+    bin_dir = builder.install_dir / "bin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    (bin_dir / "llama-cli").write_bytes(b"ELF")
+    (bin_dir / "llama-server").write_bytes(b"ELF")
+    lib_dir = builder.install_dir / "lib"
+    lib_dir.mkdir(parents=True, exist_ok=True)
+    (lib_dir / "libggml-hip.so").write_bytes(b"ELF")
+    return builder
+
+
+def test_validate_raises_when_only_cpu_device_is_enumerated(tmp_path: Path) -> None:
+    """A CPU-only install passes every --version check, so validation must
+    prove a real GPU device registers before reporting success."""
+    builder = _hip_install_tree(tmp_path)
+    toolchain = _hip_toolchain(tmp_path / "rocm-7.2.4")
+
+    def fake_run(cmd, **kwargs):
+        if "--version" in cmd:
+            return subprocess.CompletedProcess(cmd, 0, "version: 0.7.0-dev", "")
+        return subprocess.CompletedProcess(cmd, 0, "Available devices:\n  CPU\n", "")
+
+    with patch("src.linux.llama_builder._resolve_rocm_toolchain", return_value=toolchain), \
+         patch("src.linux.llama_builder.subprocess.run", side_effect=fake_run):
+        with pytest.raises(RuntimeError, match="no GPU device"):
+            builder._validate()
+
+
+def test_validate_raises_when_hip_backend_artifact_is_missing(tmp_path: Path) -> None:
+    """A HIP build that installed no ggml-hip library is a CPU-only build."""
+    builder = _hip_install_tree(tmp_path)
+    (builder.install_dir / "lib" / "libggml-hip.so").unlink()
+    toolchain = _hip_toolchain(tmp_path / "rocm-7.2.4")
+
+    def fake_run(cmd, **kwargs):
+        return subprocess.CompletedProcess(cmd, 0, "version: 0.7.0-dev", "")
+
+    with patch("src.linux.llama_builder._resolve_rocm_toolchain", return_value=toolchain), \
+         patch("src.linux.llama_builder.subprocess.run", side_effect=fake_run):
+        with pytest.raises(RuntimeError, match="HIP backend library"):
+            builder._validate()
+
+
+def test_validate_accepts_a_working_gpu_backend(tmp_path: Path) -> None:
+    """The positive path: a real ROCm device must let validation pass."""
+    builder = _hip_install_tree(tmp_path)
+    toolchain = _hip_toolchain(tmp_path / "rocm-7.2.4")
+
+    def fake_run(cmd, **kwargs):
+        if "--version" in cmd:
+            return subprocess.CompletedProcess(cmd, 0, "version: 0.7.0-dev", "")
+        return subprocess.CompletedProcess(
+            cmd, 0, "Available devices:\n  ROCm0 (AMD Radeon RX 7900 XTX)\n", ""
+        )
+
+    with patch("src.linux.llama_builder._resolve_rocm_toolchain", return_value=toolchain), \
+         patch("src.linux.llama_builder.subprocess.run", side_effect=fake_run):
+        builder._validate()
+
+
+# ---------------------------------------------------------------------------
+# ROCm SDK resolution — the distro ROCm must never win over an SDK
+# ---------------------------------------------------------------------------
+
+
+def _fake_sdk_root(base: Path, version: str = "7.2.4") -> Path:
+    """Create a directory tree shaped like a ROCm SDK install."""
+    root = base / f"rocm-{version}"
+    (root / "lib" / "llvm" / "bin").mkdir(parents=True, exist_ok=True)
+    (root / "lib" / "llvm" / "bin" / "clang++").write_text("#!/bin/sh\n", encoding="utf-8")
+    (root / "bin").mkdir(parents=True, exist_ok=True)
+    (root / "bin" / "hipconfig").write_text("#!/bin/sh\n", encoding="utf-8")
+    return root
+
+
+def _fake_distro_rocm_root(base: Path) -> Path:
+    """Create a directory tree shaped like a distro ROCm (not an SDK).
+
+    It has a hipconfig and a versioned LLVM, but no ``lib/llvm/bin/clang++``,
+    so it must never be selected over a real SDK root.
+    """
+    root = base / "distro-rocm"
+    (root / "lib" / "llvm-21" / "bin").mkdir(parents=True, exist_ok=True)
+    (root / "lib" / "llvm-21" / "bin" / "clang++").write_text("#!/bin/sh\n", encoding="utf-8")
+    (root / "bin").mkdir(parents=True, exist_ok=True)
+    (root / "bin" / "hipconfig").write_text("#!/bin/sh\n", encoding="utf-8")
+    return root
+
+
+def test_rocm_toolchain_prefers_sdk_root_over_path_hipconfig(tmp_path: Path) -> None:
+    """A ROCm SDK root must win over the distro ROCm that is first on PATH."""
+    sdk_root = _fake_sdk_root(tmp_path)
+    distro_root = _fake_distro_rocm_root(tmp_path)
+    queries: list[list[str]] = []
+
+    def fake_check_output(cmd, *args, **kwargs):
+        queries.append(list(cmd))
+        if cmd[1] == "-R":
+            return f"{sdk_root}\n"
+        if cmd[1] == "-l":
+            return f"{sdk_root / 'lib' / 'llvm' / 'bin'}\n"
+        return ""
+
+    with patch.dict("src.linux.llama_builder.os.environ", {"HIP_PATH": str(distro_root)}), \
+         patch("src.linux.llama_builder._ROCM_SDK_SEARCH_DIR", new=tmp_path), \
+         patch("src.linux.llama_builder._ROCM_DEFAULT_SDK_ROOT", new=tmp_path / "no-rocm"), \
+         patch("src.linux.llama_builder.shutil.which", return_value=str(distro_root / "bin" / "hipconfig")), \
+         patch("src.linux.llama_builder.subprocess.check_output", side_effect=fake_check_output):
+        toolchain = linux_llama_builder._resolve_rocm_toolchain()
+
+    assert toolchain.sdk_coherent is True
+    assert toolchain.root == sdk_root
+    assert toolchain.hip_path == str(sdk_root)
+    assert toolchain.hip_compiler == str(sdk_root / "lib" / "llvm" / "bin" / "clang++")
+    assert toolchain.hipcxx == str(sdk_root / "lib" / "llvm" / "bin" / "clang++")
+    # The SDK's own hipconfig must be used, never the PATH one.
+    assert queries
+    assert all(query[0] == str(sdk_root / "bin" / "hipconfig") for query in queries)
+
+
+def test_rocm_toolchain_prefers_highest_versioned_sdk_root(tmp_path: Path) -> None:
+    """Among /opt/rocm-<version> installs the highest version wins."""
+    older = _fake_sdk_root(tmp_path, version="7.1.0")
+    newer = _fake_sdk_root(tmp_path, version="7.2.4")
+    queries: list[list[str]] = []
+
+    def fake_check_output(cmd, *args, **kwargs):
+        queries.append(list(cmd))
+        if cmd[1] == "-R":
+            return f"{newer}\n"
+        if cmd[1] == "-l":
+            return f"{newer / 'lib' / 'llvm' / 'bin'}\n"
+        return ""
+
+    with patch.dict("src.linux.llama_builder.os.environ", {"HIP_PATH": ""}), \
+         patch("src.linux.llama_builder._ROCM_SDK_SEARCH_DIR", new=tmp_path), \
+         patch("src.linux.llama_builder._ROCM_DEFAULT_SDK_ROOT", new=tmp_path / "no-rocm"), \
+         patch("src.linux.llama_builder.subprocess.check_output", side_effect=fake_check_output):
+        toolchain = linux_llama_builder._resolve_rocm_toolchain()
+
+    assert toolchain.root == newer
+    assert toolchain.root != older
+    assert queries[0][0] == str(newer / "bin" / "hipconfig")
+
+
+def test_rocm_toolchain_falls_back_to_path_hipconfig_without_sdk(tmp_path: Path) -> None:
+    """With no SDK root available the builder keeps the PATH hipconfig
+    behaviour, but flags the result as not SDK-coherent."""
+    empty_dir = tmp_path / "empty"
+    empty_dir.mkdir()
+    distro_root = _fake_distro_rocm_root(tmp_path)
+    path_hipconfig = distro_root / "bin" / "hipconfig"
+    queries: list[list[str]] = []
+
+    def fake_check_output(cmd, *args, **kwargs):
+        queries.append(list(cmd))
+        if cmd[1] == "-R":
+            return f"{distro_root}\n"
+        if cmd[1] == "-l":
+            return f"{distro_root / 'lib' / 'llvm-21' / 'bin'}\n"
+        return ""
+
+    with patch.dict("src.linux.llama_builder.os.environ", {"HIP_PATH": ""}), \
+         patch("src.linux.llama_builder._ROCM_SDK_SEARCH_DIR", new=empty_dir), \
+         patch("src.linux.llama_builder._ROCM_DEFAULT_SDK_ROOT", new=tmp_path / "no-rocm"), \
+         patch("src.linux.llama_builder.shutil.which", return_value=str(path_hipconfig)), \
+         patch("src.linux.llama_builder.subprocess.check_output", side_effect=fake_check_output):
+        toolchain = linux_llama_builder._resolve_rocm_toolchain()
+
+    assert toolchain.sdk_coherent is False
+    assert toolchain.hip_path == str(distro_root)
+    assert toolchain.hipcxx == f"{distro_root / 'lib' / 'llvm-21' / 'bin'}/clang"
+    assert "PATH hipconfig" in toolchain.source
+    assert queries
+    assert all(query[0] == str(path_hipconfig) for query in queries)
+
+
+def test_rocm_toolchain_summary_reports_root_hipcxx_and_coherence(tmp_path: Path) -> None:
+    """The operator must see the resolved root, the HIPCXX in use and whether
+    the toolchain is SDK-coherent."""
+    sdk_root = _fake_sdk_root(tmp_path)
+
+    def fake_check_output(cmd, *args, **kwargs):
+        if cmd[1] == "-R":
+            return f"{sdk_root}\n"
+        if cmd[1] == "-l":
+            return f"{sdk_root / 'lib' / 'llvm' / 'bin'}\n"
+        return ""
+
+    messages: list[str] = []
+
+    with patch.dict("src.linux.llama_builder.os.environ", {"HIP_PATH": ""}), \
+         patch("src.linux.llama_builder._ROCM_SDK_SEARCH_DIR", new=tmp_path), \
+         patch("src.linux.llama_builder._ROCM_DEFAULT_SDK_ROOT", new=tmp_path / "no-rocm"), \
+         patch("src.linux.llama_builder.subprocess.check_output", side_effect=fake_check_output), \
+         patch("src.linux.llama_builder.print_info", side_effect=messages.append):
+        builder = _hip_builder(tmp_path)
+        toolchain = builder._rocm_toolchain()
+
+    assert toolchain.sdk_coherent is True
+    assert any(str(sdk_root) in message for message in messages)
+    assert any("HIPCXX=" in message for message in messages)
+    assert any("SDK-coherent=yes" in message for message in messages)

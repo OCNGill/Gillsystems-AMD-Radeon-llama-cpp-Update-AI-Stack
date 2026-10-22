@@ -9,11 +9,13 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import shutil
 import subprocess
 import platform
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from src.cli import print_dry_run, print_error, print_info, print_step, print_success, print_warning
 from src.config import GillsystemsAIStackUpdaterConfig
@@ -26,6 +28,38 @@ _VULKAN_HEADER_CANDIDATES = (
     Path("/usr/include/vulkan/vulkan.h"),
     Path("/usr/local/include/vulkan/vulkan.h"),
 )
+
+# Backend shared objects that must exist in the install tree for a GPU build
+# to be considered real. A CPU-only build never installs these.
+_HIP_BACKEND_ARTIFACT_PATTERN = "lib/libggml-hip.so*"
+_VULKAN_BACKEND_ARTIFACT_PATTERN = "lib/libggml-vulkan.so*"
+
+# A device line that names a real GPU backend. "CPU" alone is not enough.
+_GPU_DEVICE_PATTERN = re.compile(r"\b(ROCm|Vulkan|AMD|Radeon)\b", re.IGNORECASE)
+
+# ROCm SDK discovery roots. A distro ROCm (/usr) must never win over an SDK.
+_ROCM_DEFAULT_SDK_ROOT = Path("/opt/rocm")
+_ROCM_SDK_SEARCH_DIR = Path("/opt")
+_ROCM_SDK_VERSIONED_PREFIX = "rocm-"
+
+
+@dataclass
+class RocmToolchain:
+    """The ROCm toolchain the build will actually use.
+
+    ``sdk_coherent`` is True when the toolchain comes from a real ROCm SDK
+    install (its own ``hipconfig`` plus its own LLVM compiler), so the
+    compile-time headers/compiler and the deployed ROCm runtime are the same
+    generation. It is False when the distro ROCm (e.g. Ubuntu's ROCm 7.1 under
+    /usr) was used instead, which is the classic compile/runtime skew.
+    """
+
+    root: Optional[Path] = None
+    hip_path: Optional[str] = None
+    hipcxx: Optional[str] = None
+    hip_compiler: Optional[str] = None
+    sdk_coherent: bool = False
+    source: str = "none"
 
 _VULKAN_LOADER_LIBRARY_CANDIDATES = (
     Path("/usr/lib/libvulkan.so"),
@@ -53,6 +87,9 @@ class LlamaBuilderLinux:
         # Name the build directory by the actual backend so HIP and Vulkan builds
         # never share the same CMakeCache and pollute each other's object files.
         self.build_dir = self.source_dir / ("build-hip" if self.use_hip else "build-vulkan")
+        # Resolved lazily on first use so the ROCm SDK is discovered once and
+        # the same toolchain is used for configure, build and validation.
+        self._rocm_toolchain_cache: Optional[RocmToolchain] = None
 
     def build_and_install(self) -> None:
         """Full clone → cmake configure → build → install cycle."""
@@ -150,19 +187,41 @@ class LlamaBuilderLinux:
             f"-DCMAKE_INSTALL_PREFIX={self.install_dir}",
         ]
 
+        # The repair re-configure must use exactly the same arguments as the
+        # first attempt, so they are kept in one list.
+        hip_cmake_args: list[str] = []
+
         if use_hip:
-            cmake_args += [
+            toolchain = self._rocm_toolchain()
+            hip_cmake_args = [
+                "cmake",
+                "-S", str(self.source_dir),
+                "-B", str(self.build_dir),
+                "-DCMAKE_BUILD_TYPE=Release",
+                f"-DCMAKE_INSTALL_PREFIX={self.install_dir}",
                 f"-DAMDGPU_TARGETS={targets_str}",
                 "-DGGML_HIP=ON",
                 "-DGGML_HIP_ROCWMMA_FATTN=OFF",
                 "-DLLAMA_CURL=ON",   # AMD docs require this flag
             ]
+            if toolchain.sdk_coherent and toolchain.root is not None:
+                # Compile against the same ROCm generation that will be
+                # deployed at runtime. Without these the build can silently
+                # use the distro ROCm (e.g. 7.1 under /usr) while the machine
+                # loads the AMD SDK runtime (e.g. 7.2.4 under /opt/rocm-7.2.4).
+                hip_cmake_args += [
+                    f"-DROCM_PATH={toolchain.root}",
+                    f"-DCMAKE_HIP_COMPILER={toolchain.hip_compiler}",
+                ]
+            cmake_args = list(hip_cmake_args)
         else:
             cmake_args += ["-DGGML_VULKAN=ON", "-DGGML_HIP=OFF"]
             print_info("Enabling Vulkan backend (HIP fallback for mobile/edge targets).")
 
         if self._use_ninja:
             cmake_args += ["-GNinja"]
+            if use_hip:
+                hip_cmake_args += ["-GNinja"]
 
         if self.cfg.behavior.dry_run:
             print_dry_run(f"Would configure: {' '.join(cmake_args)}")
@@ -176,29 +235,108 @@ class LlamaBuilderLinux:
         _run(cmake_args)
         print_success("CMake configuration complete.")
 
+        # A ROCm/HIP SDK upgrade swaps the compiler (e.g. 7.1 -> 7.2). CMake
+        # reacts by deleting its own cache and re-running configure, and that
+        # re-configure can silently drop -DGGML_HIP=ON. The result is a
+        # CPU-only build that still "succeeds" and still passes every
+        # --version check. Read the cache back and repair it.
+        if use_hip:
+            state = self._hip_backend_cache_state()
+            if state != "on":
+                print_warning(
+                    "CMake cache does not report GGML_HIP=ON after configure "
+                    f"(cache state: {state}). Re-configuring with HIP explicitly "
+                    "enabled so the GPU backend is actually built."
+                )
+                if cache_file.exists():
+                    cache_file.unlink()
+                _run(hip_cmake_args)
+                state = self._hip_backend_cache_state()
+                if state != "on":
+                    raise RuntimeError(
+                        "CMake cache still does not report GGML_HIP=ON after a "
+                        f"re-configure with HIP explicitly enabled (cache state: {state}). "
+                        "The HIP configure was lost and the build would be CPU-only. "
+                        "Refusing to build a CPU-only llama.cpp."
+                    )
+                print_success("Re-configured with HIP enabled; GGML_HIP=ON is in the cache.")
+
     # ------------------------------------------------------------------
     # Build
     # ------------------------------------------------------------------
+
+    def _hip_backend_cache_state(self) -> str:
+        """Tri-state read of this build's CMake cache: 'on', 'off' or 'unknown'."""
+        return _hip_cache_state(self.build_dir)
+
+    def _rocm_toolchain(self) -> RocmToolchain:
+        """Resolve (once) and report the ROCm toolchain used for this build.
+
+        A distro ROCm on PATH (e.g. Ubuntu's ROCm 7.1 under /usr) can differ
+        from the deployed AMD SDK runtime (e.g. 7.2.4 under /opt/rocm-7.2.4).
+        Preferring a real SDK root keeps compile-time and runtime coherent.
+        """
+        if self._rocm_toolchain_cache is None:
+            self._rocm_toolchain_cache = _resolve_rocm_toolchain()
+            toolchain = self._rocm_toolchain_cache
+            print_info(
+                f"ROCm toolchain: root={toolchain.root or 'unknown'}  "
+                f"HIPCXX={toolchain.hipcxx or 'unknown'}  "
+                f"SDK-coherent={'yes' if toolchain.sdk_coherent else 'no'}  "
+                f"(source: {toolchain.source})"
+            )
+        return self._rocm_toolchain_cache
+
+    def _hip_runtime_env(self) -> dict:
+        """Environment for HIP runtime checks: load the resolved ROCm runtime.
+
+        The device enumeration must run against the same ROCm generation the
+        binary was linked against, otherwise the check would probe a different
+        runtime than the one the updater will actually use.
+        """
+        env = os.environ.copy()
+        if not self.use_hip:
+            return env
+
+        toolchain = self._rocm_toolchain()
+        lib_dirs: list[str] = []
+        for base in (toolchain.root, Path(toolchain.hip_path) if toolchain.hip_path else None):
+            if base is None:
+                continue
+            lib_dir = str(base / "lib")
+            if lib_dir not in lib_dirs:
+                lib_dirs.append(lib_dir)
+
+        existing = env.get("LD_LIBRARY_PATH", "")
+        prefix = os.pathsep.join(lib_dirs)
+        if prefix and existing:
+            env["LD_LIBRARY_PATH"] = f"{prefix}{os.pathsep}{existing}"
+        elif prefix:
+            env["LD_LIBRARY_PATH"] = prefix
+        if toolchain.hip_path:
+            env["HIP_PATH"] = toolchain.hip_path
+        return env
 
     def _build(self) -> None:
         n_jobs = os.cpu_count() or 4
 
         env = os.environ.copy()
 
-        # AMD docs: set HIPCXX and HIP_PATH via hipconfig before cmake build
-        if self.use_hip and shutil.which("hipconfig"):
-            try:
-                hipcxx_dir = subprocess.check_output(
-                    ["hipconfig", "-l"], text=True
-                ).strip()
-                hip_path = subprocess.check_output(
-                    ["hipconfig", "-R"], text=True
-                ).strip()
-                env["HIPCXX"] = f"{hipcxx_dir}/clang"
-                env["HIP_PATH"] = hip_path
-                print_info(f"HIPCXX={env['HIPCXX']}  HIP_PATH={hip_path}")
-            except Exception as exc:
-                print_warning(f"hipconfig query failed: {exc} — using default env")
+        # AMD docs: set HIPCXX and HIP_PATH via hipconfig before cmake build.
+        # When a ROCm SDK is available we use the SDK's own hipconfig so the
+        # compiler and the deployed ROCm runtime are the same generation.
+        if self.use_hip:
+            toolchain = self._rocm_toolchain()
+            if toolchain.hipcxx:
+                env["HIPCXX"] = toolchain.hipcxx
+            if toolchain.hip_path:
+                env["HIP_PATH"] = toolchain.hip_path
+            if not toolchain.sdk_coherent:
+                print_warning(
+                    "No ROCm SDK root found — falling back to the PATH hipconfig "
+                    f"(HIPCXX={env.get('HIPCXX')}, HIP_PATH={env.get('HIP_PATH')}). "
+                    "The build may not be SDK-coherent with the deployed ROCm runtime."
+                )
 
         if self.use_hip and get_compute_tier(self.gpu_targets) == 2:
             print_info("Tier 2 Mobile/Edge + HIP architecture detected. Injecting LLAMA_HIP_UMA=1.")
@@ -270,10 +408,87 @@ class LlamaBuilderLinux:
     # Validate
     # ------------------------------------------------------------------
 
+    def _verify_hip_backend_artifact(self) -> None:
+        """Assert the HIP backend shared object exists in the install tree."""
+        expected = self.install_dir / "lib" / "libggml-hip.so*"
+        try:
+            found = list((self.install_dir / "lib").glob("libggml-hip.so*"))
+        except OSError:
+            found = []
+        if not found:
+            raise RuntimeError(
+                "The HIP backend library was not found in the install tree "
+                f"(expected {expected}). The build did not produce a HIP "
+                "backend and would run CPU-only. Refusing to report a "
+                "successful update."
+            )
+        print_success(f"HIP backend artifact present: {found[0].name}")
+
+    def _verify_gpu_backend(self, runtime_env: dict) -> bool:
+        """Prove a real GPU backend registers with the installed binaries.
+
+        A CPU-only build passes every --version check, so the only honest test
+        is to ask the binary which devices it can see and require a non-CPU
+        one. When the binary cannot enumerate devices we fall back to
+        requiring the backend shared object to be present in the install tree.
+        """
+        cli = self.install_dir / "bin" / "llama-cli"
+        if cli.exists():
+            try:
+                result = subprocess.run(
+                    [str(cli), "--list-devices"],
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                    env=runtime_env,
+                )
+            except Exception as exc:
+                print_warning(f"Could not enumerate devices via llama-cli: {exc}")
+                result = None
+            if result is not None and result.returncode == 0:
+                output = (result.stdout or "") + (result.stderr or "")
+                if _GPU_DEVICE_PATTERN.search(output):
+                    print_success("GPU device enumerated via llama-cli --list-devices.")
+                    return True
+                print_warning(
+                    "llama-cli --list-devices reported no ROCm/Vulkan device — "
+                    "the build looks CPU-only."
+                )
+                return False
+            if result is not None:
+                print_warning(
+                    "llama-cli --list-devices is not supported by this build; "
+                    "falling back to the backend library check."
+                )
+
+        # Fallback: the backend shared object must be installed.
+        for pattern in self._backend_artifact_patterns():
+            try:
+                matches = list(self.install_dir.glob(pattern))
+            except OSError:
+                matches = []
+            if matches:
+                print_success(f"GPU backend library present in the install tree: {matches[0].name}")
+                return True
+
+        print_warning(
+            "No GPU device could be enumerated and no GPU backend library is "
+            "present in the install tree."
+        )
+        return False
+
+    def _backend_artifact_patterns(self) -> List[str]:
+        """Glob patterns (relative to the install dir) for the backend .so."""
+        if self.use_hip:
+            return [_HIP_BACKEND_ARTIFACT_PATTERN]
+        return [_VULKAN_BACKEND_ARTIFACT_PATTERN, "lib/*vulkan*.so*"]
+
     def _validate(self) -> None:
         if self.cfg.behavior.dry_run:
             print_dry_run("Would validate: llama-cli --version")
             return
+
+        runtime_env = self._hip_runtime_env()
 
         validated: list[str] = []
         for binary in ("llama-cli", "llama-server"):
@@ -282,7 +497,7 @@ class LlamaBuilderLinux:
                 try:
                     result = subprocess.run(
                         [str(binary_path), "--version"],
-                        capture_output=True, text=True, timeout=10
+                        capture_output=True, text=True, timeout=10, env=runtime_env
                     )
                     output = (result.stdout + result.stderr).strip().split("\n")[0]
                     print_success(f"{binary}: {output[:80]}")
@@ -295,10 +510,164 @@ class LlamaBuilderLinux:
         if not validated:
             print_warning("Could not validate any llama.cpp binaries — check installation manually.")
 
+        # A CPU-only build installs no HIP backend. Assert it is really there
+        # instead of trusting that the configure asked for it.
+        if self.use_hip:
+            self._verify_hip_backend_artifact()
+
+        # --version proves the binary runs, not that it has a GPU backend.
+        # A CPU-only build passes every --version check, so require positive
+        # evidence that a real GPU device registers.
+        if not self._verify_gpu_backend(runtime_env):
+            raise RuntimeError(
+                "llama.cpp was installed but no GPU device could be verified. "
+                "The build is CPU-only or the GPU backend failed to register. "
+                "Refusing to report a successful update."
+            )
+
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _hip_cache_state(build_dir: Path) -> str:
+    """Return "on", "off" or "unknown" for the CMake cache's GGML_HIP entry.
+
+    "unknown" means CMake never wrote a cache we can read (or the entry is
+    absent), so there is nothing to enforce. "unknown" is NEVER treated as
+    "off" — it just means we cannot prove HIP is enabled.
+    """
+    cache_file = build_dir / "CMakeCache.txt"
+    try:
+        content = cache_file.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return "unknown"
+    match = re.search(r"^GGML_HIP:BOOL=(\w+)", content, re.MULTILINE)
+    if not match:
+        return "unknown"
+    return "on" if match.group(1).upper() == "ON" else "off"
+
+
+def _is_rocm_sdk_root(root: Path) -> bool:
+    """True when *root* is a real ROCm SDK install, not a distro ROCm.
+
+    A ROCm SDK ships its own LLVM toolchain and its own hipconfig:
+    ``<root>/lib/llvm/bin/clang++`` and ``<root>/bin/hipconfig``.
+    Ubuntu's packaged ROCm (e.g. 7.1 under /usr) does not match this shape,
+    which is exactly why it must never win over an SDK root.
+    """
+    try:
+        if not root.is_dir():
+            return False
+    except OSError:
+        return False
+    return (root / "lib" / "llvm" / "bin" / "clang++").exists() and (root / "bin" / "hipconfig").exists()
+
+
+def _rocm_version_sort_key(name: str) -> tuple[int, ...]:
+    """Sort key for ROCm version directories like 'rocm-7.2.4'."""
+    digits: list[int] = []
+    for chunk in name.replace("-", ".").split("."):
+        digits.append(int(chunk) if chunk.isdigit() else 0)
+    return tuple(digits)
+
+
+def _rocm_sdk_candidates(
+    search_dir: Optional[Path] = None,
+    default_root: Optional[Path] = None,
+) -> List[Path]:
+    """ROCm root candidates in priority order.
+
+    1. ``$HIP_PATH`` when it already looks like an SDK install.
+    2. ``/opt/rocm`` (usually a symlink to the versioned SDK).
+    3. ``/opt/rocm-<version>`` directories, highest version first.
+
+    A distro ROCm root such as /usr is deliberately absent: it must never be
+    preferred over an available SDK root.
+    """
+    candidates: List[Path] = []
+
+    hip_path_env = os.environ.get("HIP_PATH")
+    if hip_path_env:
+        hip_path_root = Path(hip_path_env)
+        if _is_rocm_sdk_root(hip_path_root):
+            candidates.append(hip_path_root)
+
+    candidates.append(default_root if default_root is not None else _ROCM_DEFAULT_SDK_ROOT)
+
+    search_root = search_dir if search_dir is not None else _ROCM_SDK_SEARCH_DIR
+    try:
+        versioned = [
+            entry
+            for entry in search_root.iterdir()
+            if entry.is_dir() and entry.name.startswith(_ROCM_SDK_VERSIONED_PREFIX)
+        ]
+    except OSError:
+        versioned = []
+    versioned.sort(key=lambda p: _rocm_version_sort_key(p.name), reverse=True)
+    candidates.extend(versioned)
+
+    return candidates
+
+
+def _hipconfig_query(hipconfig: str, flag: str) -> str:
+    """Run ``hipconfig <flag>`` and return its stripped output ('' on error)."""
+    try:
+        output = subprocess.check_output([hipconfig, flag], text=True)
+    except Exception:
+        return ""
+    return output.strip()
+
+
+def _resolve_rocm_toolchain(
+    search_dir: Optional[Path] = None,
+    default_root: Optional[Path] = None,
+) -> RocmToolchain:
+    """Resolve the ROCm SDK root, HIP_PATH and HIPCXX to build against.
+
+    Prefers a real ROCm SDK over the distro ROCm that happens to be first on
+    PATH, so the compile-time compiler and the deployed ROCm runtime are the
+    same generation. Falls back to the PATH ``hipconfig`` when no SDK root is
+    available (still functional, just not SDK-coherent).
+    """
+    for root in _rocm_sdk_candidates(search_dir=search_dir, default_root=default_root):
+        if not _is_rocm_sdk_root(root):
+            continue
+        hipconfig = str(root / "bin" / "hipconfig")
+        # Use the SDK's OWN hipconfig, never the one that may be first on PATH.
+        hip_path = _hipconfig_query(hipconfig, "-R") or str(root)
+        hipcxx_dir = _hipconfig_query(hipconfig, "-l")
+        sdk_compiler = root / "lib" / "llvm" / "bin" / "clang++"
+        # The SDK's own compiler is the one that matches the deployed ROCm
+        # runtime generation, so it wins over whatever hipconfig -l reports.
+        hipcxx = str(sdk_compiler) if sdk_compiler.exists() else ""
+        if not hipcxx and hipcxx_dir:
+            reported = Path(hipcxx_dir) / "clang++"
+            if reported.exists():
+                hipcxx = str(reported)
+        return RocmToolchain(
+            root=root,
+            hip_path=hip_path,
+            hipcxx=hipcxx,
+            hip_compiler=str(sdk_compiler),
+            sdk_coherent=True,
+            source=str(root),
+        )
+
+    # No SDK root: fall back to whichever hipconfig is on PATH.
+    hipconfig = shutil.which("hipconfig") or "hipconfig"
+    hipcxx_dir = _hipconfig_query(hipconfig, "-l")
+    hip_path = _hipconfig_query(hipconfig, "-R")
+    hipcxx = f"{hipcxx_dir}/clang" if hipcxx_dir else None
+    return RocmToolchain(
+        root=Path(hip_path) if hip_path else None,
+        hip_path=hip_path or None,
+        hipcxx=hipcxx,
+        hip_compiler=hipcxx,
+        sdk_coherent=False,
+        source=f"PATH hipconfig ({hipconfig})",
+    )
 
 
 def _run(cmd: list[str], timeout: int = 3600, env: dict | None = None) -> None:
