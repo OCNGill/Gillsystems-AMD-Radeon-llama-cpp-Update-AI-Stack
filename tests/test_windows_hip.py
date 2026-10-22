@@ -6,6 +6,7 @@ Tests are designed to run on both Windows and Linux (CI).
 """
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -37,7 +38,7 @@ def live_cfg() -> GillsystemsAIStackUpdaterConfig:
 
 class TestHIPUpdaterFinder:
     def test_find_latest_returns_url_and_version(self, dry_run_cfg: GillsystemsAIStackUpdaterConfig):
-        """Verify that the latest installer URL resolves to a plausible AMD URL."""
+        """Verify that the latest installer URL resolves to a live AMD download URL."""
         pytest.importorskip("httpx")
 
         from src.windows.hip_updater import HIPUpdater
@@ -57,11 +58,21 @@ class TestHIPUpdaterFinder:
             url, version = updater._find_latest_installer()
 
         assert url is not None
-        assert "HIP-SDK-Installer" in url
+        # The live installer space is download.amd.com/developer/eula/rocm-hub.
+        assert url.startswith("https://download.amd.com/developer/eula/rocm-hub/")
+        # The retired repo.radeon.com/rocm/msi tree 404s on every path.
+        assert "repo.radeon.com" not in url
+        # Real bundles are named AMD-Software-PRO-Edition-<QUARTER>-<SUFFIX>-For-HIP.exe
+        assert url.endswith("-For-HIP.exe")
+        # 24.x and older ship the 6.x-era HIP SDK; installing one over a 7.x
+        # install duplicates the component set and breaks the build.
+        quarter_match = re.search(r"AMD-Software-PRO-Edition-(\d{2}\.Q[1-4])-", url)
+        assert quarter_match is not None
+        assert int(quarter_match.group(1).split(".")[0]) >= 25
         assert version is not None
 
-    def test_find_latest_falls_back_gracefully(self, dry_run_cfg: GillsystemsAIStackUpdaterConfig):
-        """When HTTP fails, it falls back to hardcoded URL."""
+    def test_find_latest_raises_when_no_installer_is_reachable(self, dry_run_cfg: GillsystemsAIStackUpdaterConfig):
+        """When every HTTP probe fails it refuses the legacy 6.x-era fallback."""
         from src.windows.hip_updater import HIPUpdater
 
         updater = HIPUpdater(dry_run_cfg)
@@ -73,11 +84,14 @@ class TestHIPUpdaterFinder:
             mock_client.get.side_effect = Exception("network error")
             mock_client_cls.return_value = mock_client
 
-            url, version = updater._find_latest_installer()
+            with pytest.raises(RuntimeError) as exc_info:
+                updater._find_latest_installer()
 
-        # Should still return a fallback
-        assert url is not None
-        assert "HIP" in url
+        message = str(exc_info.value)
+        # No legacy fallback: installing HIP SDK 6.x over a 7.x install
+        # duplicates the component set and breaks the llama.cpp HIP build.
+        assert "Refusing to fall back to a legacy" in message
+        assert "6.x-era" in message
 
 
 # ---------------------------------------------------------------------------

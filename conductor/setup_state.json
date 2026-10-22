@@ -1,12 +1,12 @@
 {
   "project": "gillsystems-ai-stack-updater-enterprise",
   "version": "0.1.0-enterprise",
-  "public_baseline": "v2.6.0",
-  "last_successful_step": "enterprise_init",
-  "last_round_completed": "Enterprise Init",
-  "current_phase": "Enterprise edition initialized from public v2.6.0 — T-101 policy-driven updates next",
+  "public_baseline": "v2.6.1",
+  "last_successful_step": "round9_junction_safe_install",
+  "last_round_completed": "Round 9: Junction-Safe Install + AMD Installer CLI Fix",
+  "current_phase": "v2.6.1 shipped: Windows install no longer destroys build output via junction; HIP SDK installer uses real AMD CLI flags; HIP SDK component set reduced to Core/Libraries/Compiler/RayTracing (VS Plugin removed); consumer display driver preserved",
   "active_track": "T-100-enterprise-foundation",
-  "timestamp": "2026-10-02T00:00:00.000000",
+  "timestamp": "2026-10-21T23:00:00.000000",
   "public_repo": "OCNGill/Gillsystems-AMD-Radeon-llama-cpp-Update-AI-Stack",
   "private_repo": "OCNGill/Gillsystems-AI-Stack-Updater-Enterprise",
   "enterprise_tracks": {

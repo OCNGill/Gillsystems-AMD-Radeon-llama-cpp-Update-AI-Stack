@@ -22,6 +22,7 @@
 ## Public Baseline (Reference Only)
 | Track | Version | Date | Notes |
 |-------|---------|------|-------|
+| T-001: Agent Architecture & Core | v2.6.1 | 2026-10-21 | Junction-safe install, real AMD installer CLI (`-install -log`), HIP SDK component hygiene |
 | T-001: Agent Architecture & Core | v2.6.0 | 2026-09-21 | Public repo: packaged, multi-gen GPU detection, privacy scrub, 113/113 tests |
 | T-001: Agent Architecture & Core | v2.5.0 | 2026-09-17 | Headless sudo validation, ROCm timeout, --skip-rocm fix |
 | T-001: Agent Architecture & Core | v2.4.0 | 2026-05-29 | 4 launcher bugs fixed, Gemma 4 tuning reference |

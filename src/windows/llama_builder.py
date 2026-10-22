@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+import stat
 import subprocess
 from pathlib import Path
 from typing import List, Optional
@@ -280,15 +281,61 @@ class LlamaBuilderWindows:
     # Install
     # ------------------------------------------------------------------
 
+    def _ensure_install_bin_is_real_dir(self) -> None:
+        """Replace a junction/symlinked ``install_dir/bin`` with a real directory.
+
+        If ``install_dir/bin`` is a junction into the build tree, every file
+        operation on it (including the ``*.exe`` -> ``*.exe.old`` rename done
+        to work around Windows file locks) lands in the build tree and destroys
+        the freshly built binaries. The junction is removed with ``os.rmdir``
+        (which deletes the link only, never the target contents) and replaced
+        by a real directory so the install writes real files.
+        """
+        bin_dir = self.install_dir / "bin"
+        if not _is_reparse_point(bin_dir):
+            return
+
+        target = ""
+        try:
+            target = f" -> {os.path.realpath(bin_dir)}"
+        except OSError:
+            pass
+
+        print_warning(
+            f"Install bin directory {bin_dir} is a link/junction{target}. "
+            "Removing the link and installing into a real directory instead."
+        )
+
+        try:
+            _remove_link(bin_dir)
+        except OSError as exc:
+            print_warning(
+                f"Could not remove the link at {bin_dir} ({exc}). "
+                "Continuing — the install may fail if the link points into the build tree."
+            )
+            return
+
+        bin_dir.mkdir(parents=True, exist_ok=True)
+
     def _install(self) -> None:
         if self.cfg.behavior.dry_run:
             print_dry_run(f"Would install binaries to {self.install_dir}")
             return
 
+        # A junction/symlink at install_dir\bin can point straight into the build
+        # tree. Renaming "*.exe" through such a link destroys the freshly built
+        # binaries and makes `cmake --install` fail with "file INSTALL cannot find".
+        # Replace the link with a real directory before touching any binary.
+        self._ensure_install_bin_is_real_dir()
+
+        # Repair any damage left behind by an earlier run that installed through
+        # a junction (build outputs renamed to *.exe.old).
+        _restore_stale_exe_old(self.build_dir)
+
         # Windows locks running .exe files. Rename any existing binaries out of
         # the way before cmake --install so we don't get "access denied" failures
         # when llama-server or llama-cli is still open in another terminal.
-        _unlock_existing_binaries(self.install_dir)
+        renamed = _unlock_existing_binaries(self.install_dir, build_dir=self.build_dir)
 
         install_cmd = [
             "cmake", "--install", str(self.build_dir),
@@ -297,7 +344,17 @@ class LlamaBuilderWindows:
         ]
         print_step(f"Installing binaries to {self.install_dir}...")
         self.install_dir.mkdir(parents=True, exist_ok=True)
-        _run(install_cmd)
+        try:
+            _run(install_cmd)
+        except BaseException:
+            # Restore the renamed binaries before propagating the failure so the
+            # build tree / install tree is never left in a damaged state.
+            _restore_renamed_binaries(renamed, installed=False)
+            raise
+
+        # Install succeeded: the freshly installed files occupy the target names,
+        # so the renamed .exe.old copies are just litter and are removed.
+        _restore_renamed_binaries(renamed, installed=True)
         print_success(f"Installed to {self.install_dir}")
 
         hip_path = os.environ.get("HIP_PATH") or _find_hip_path()
@@ -327,7 +384,11 @@ class LlamaBuilderWindows:
         _append_to_user_path(bin_dir)
         print_info(f"Added {bin_dir} to user PATH.")
 
-        mirrored_bin_dir = _mirror_install_bin_tree(self.install_dir / "bin", self.source_dir / "bin")
+        mirrored_bin_dir = _mirror_install_bin_tree(
+            self.install_dir / "bin",
+            self.source_dir / "bin",
+            build_dir=self.build_dir,
+        )
         if mirrored_bin_dir:
             print_info(f"Mirrored installed binaries into {mirrored_bin_dir}.")
 
@@ -413,17 +474,99 @@ class LlamaBuilderWindows:
 # ---------------------------------------------------------------------------
 
 
-def _unlock_existing_binaries(install_dir: Path) -> None:
+def _is_reparse_point(path: Path) -> bool:
+    """Return True when *path* is a symlink, junction, or other reparse point.
+
+    On Windows a directory junction is not reported by ``os.path.islink`` (that
+    only covers symlinks), so the reparse-point file attribute is checked as
+    well. The attribute constant is looked up defensively so the helper also
+    works on non-Windows platforms.
+    """
+    try:
+        if os.path.islink(path):
+            return True
+        status = os.lstat(path)
+    except OSError:
+        return False
+
+    attributes = getattr(status, "st_file_attributes", 0)
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+    return bool(attributes & reparse_flag)
+
+
+def _remove_link(path: Path) -> None:
+    """Delete a symlink/junction without touching the contents of its target.
+
+    ``os.rmdir`` on a junction removes the link only; ``os.unlink`` is used for
+    symlinks (on POSIX ``rmdir`` on a symlink fails with ENOTDIR). On Windows a
+    directory symlink cannot be unlinked, so the rmdir fallback is used there.
+    """
+    if os.path.islink(path):
+        try:
+            os.unlink(path)
+            return
+        except OSError:
+            pass
+
+    try:
+        os.rmdir(path)
+    except OSError:
+        os.unlink(path)
+
+
+def _is_within(child: str, parent: str) -> bool:
+    """Return True when *child* resolves to a location inside *parent*."""
+    try:
+        child_norm = os.path.normcase(os.path.abspath(child))
+        parent_norm = os.path.normcase(os.path.abspath(parent))
+        return os.path.normcase(os.path.commonpath([child_norm, parent_norm])) == parent_norm
+    except ValueError:
+        return False
+
+
+def _unlock_existing_binaries(
+    install_dir: Path,
+    build_dir: Optional[Path] = None,
+) -> List[tuple]:
     """Rename existing llama binaries before install to avoid Windows file-locking errors.
 
     If llama-cli.exe or llama-server.exe is open in another terminal, cmake --install
     will fail with "access denied". Renaming to .exe.old lets the install proceed;
     the old file is cleaned up on the next successful install.
+
+    Candidates that resolve inside *build_dir* are never renamed: renaming a
+    build output destroys the artifact the install step is about to copy. This
+    is the defence-in-depth for an install ``bin`` directory that is a junction
+    pointing into the build tree.
+
+    Returns the list of ``(original, renamed)`` pairs so the caller can restore
+    them after the install attempt.
     """
     bin_dir = install_dir / "bin"
     if not bin_dir.exists():
-        return
-    for exe in bin_dir.glob("*.exe"):
+        return []
+
+    build_root: Optional[str] = None
+    if build_dir is not None:
+        try:
+            build_root = os.path.realpath(build_dir)
+        except OSError:
+            build_root = None
+
+    renamed: List[tuple] = []
+    for exe in sorted(bin_dir.glob("*.exe")):
+        if build_root is not None:
+            try:
+                resolved = os.path.realpath(exe)
+            except OSError:
+                resolved = str(exe)
+            if _is_within(resolved, build_root):
+                print_warning(
+                    f"Skipping {exe.name} — it resolves inside the build directory "
+                    f"({build_root}) and must not be renamed."
+                )
+                continue
+
         stale = exe.with_suffix(".exe.old")
         try:
             stale.unlink(missing_ok=True)
@@ -433,6 +576,81 @@ def _unlock_existing_binaries(install_dir: Path) -> None:
                 f"Could not rename {exe.name} ({exc}). "
                 "If it is currently running, stop it before installing or the install may fail."
             )
+            continue
+        renamed.append((exe, stale))
+
+    return renamed
+
+
+def _restore_renamed_binaries(renamed: List[tuple], installed: bool) -> None:
+    """Restore binaries renamed by :func:`_unlock_existing_binaries`.
+
+    A renamed file is put back under its original name so no binary is lost and
+    no ``.exe.old`` litter is left behind:
+
+    * when the original name is free the backup is simply renamed back;
+    * when the original name is occupied by a file the install step just wrote,
+      that file is dropped and the backup is renamed back (the install failed),
+      or the backup is deleted (the install succeeded and the fresh file wins).
+    """
+    for original, stale in renamed:
+        if not stale.exists():
+            continue
+
+        if original.exists():
+            if installed:
+                # The install step produced a fresh file under the target name.
+                try:
+                    stale.unlink(missing_ok=True)
+                except OSError as exc:
+                    print_warning(f"Could not remove stale {stale.name}: {exc}")
+                continue
+
+            # The install failed: drop the partial file and put the original back.
+            try:
+                original.unlink(missing_ok=True)
+                stale.rename(original)
+            except OSError as exc:
+                print_warning(
+                    f"Could not restore {original.name} from {stale.name}: {exc}"
+                )
+            continue
+
+        try:
+            stale.rename(original)
+        except OSError as exc:
+            print_warning(f"Could not restore {original.name} from {stale.name}: {exc}")
+
+
+def _restore_stale_exe_old(build_dir: Path) -> List[Path]:
+    """Clean up leftover ``*.exe.old`` files in a build tree.
+
+    A previous run that installed through a junction renamed the freshly built
+    binaries inside the build tree to ``*.exe.old``. When the original ``.exe``
+    is missing the backup is restored under its original name; when the original
+    is already present the backup is pure litter and is removed.
+    """
+    bin_dir = build_dir / "bin"
+    if not bin_dir.is_dir():
+        return []
+
+    restored: List[Path] = []
+    for stale in sorted(bin_dir.glob("*.exe.old")):
+        original = stale.with_suffix("")
+        if original.exists():
+            try:
+                stale.unlink(missing_ok=True)
+            except OSError as exc:
+                print_warning(f"Could not remove stale {stale.name} in {bin_dir}: {exc}")
+            continue
+        try:
+            stale.rename(original)
+        except OSError as exc:
+            print_warning(f"Could not restore {stale.name} in {bin_dir}: {exc}")
+            continue
+        restored.append(original)
+
+    return restored
 
 
 def _find_hip_path() -> Optional[str]:
@@ -610,18 +828,57 @@ def _resolve_rocblas_tensile_libpath(install_bin: Path, hip_path: Optional[str])
     return None
 
 
-def _mirror_install_bin_tree(install_bin: Path, source_bin: Path) -> Optional[Path]:
-    """Copy the canonical install bin tree into the source-root bin directory."""
+def _mirror_install_bin_tree(
+    install_bin: Path,
+    source_bin: Path,
+    build_dir: Optional[Path] = None,
+) -> Optional[Path]:
+    """Copy the canonical install bin tree into the source-root bin directory.
+
+    A junction or symlink at *source_bin* is never followed: ``shutil.rmtree``
+    on a junction deletes the contents of its *target* (which can be the build
+    tree), and copying through it would move build outputs into the source tree.
+    Such a link is replaced by a real directory instead.
+    """
     if not install_bin.exists():
         return None
 
     if install_bin.resolve(strict=False) == source_bin.resolve(strict=False):
         return None
 
-    if source_bin.is_symlink() or source_bin.is_file():
+    if _is_reparse_point(install_bin):
+        print_warning(
+            f"Install bin directory {install_bin} is still a link/junction — "
+            "skipping the mirror so build outputs are not copied into the source tree."
+        )
+        return None
+
+    if _is_reparse_point(source_bin):
+        print_warning(
+            f"Source bin directory {source_bin} is a link/junction — "
+            "replacing it with a real directory before mirroring."
+        )
+        try:
+            _remove_link(source_bin)
+        except OSError as exc:
+            print_warning(f"Could not remove the link at {source_bin} ({exc}).")
+            return None
+    elif source_bin.is_file():
         source_bin.unlink()
     elif source_bin.exists():
         shutil.rmtree(source_bin)
+
+    if build_dir is not None:
+        try:
+            build_root = os.path.realpath(build_dir)
+            if _is_within(os.path.realpath(source_bin), build_root):
+                print_warning(
+                    f"Refusing to mirror into {source_bin} — it resolves inside the "
+                    f"build directory ({build_root})."
+                )
+                return None
+        except OSError:
+            pass
 
     shutil.copytree(install_bin, source_bin)
     return source_bin

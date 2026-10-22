@@ -1,5 +1,34 @@
 ---
 
+## v2.6.1 — 2026-10-21 — Round 9: Junction-Safe Install, Real AMD Installer CLI, HIP SDK Component Hygiene
+
+### Summary
+Repaired the Windows install path that had been failing on the AMD node for four consecutive runs, and corrected the HIP SDK installer invocation that was popping a GUI instead of running silently. The updater now installs cleanly, the HIP SDK component set is exactly what was asked for, and the consumer display driver is preserved.
+
+*"Whatever is hidden under the fig leaves will be brought to light."* — Matthew 13:26 (ESV) (the hidden junction under the install tree was the fault the whole failure traced back to; the fix brings it into the light where it can be seen and removed)
+
+### Fixed
+1. **Install step destroyed its own build output (root cause of every failed run).** `C:\Gillsystems\llama.cpp\bin` had been made a directory JUNCTION pointing at `C:\Users\steph\src\llama.cpp\build-hip-win\bin` (confirmed: `Attributes "Directory, ReparsePoint"`, `LinkType "Junction"`, and the two trees' `llama-server-impl.dll` shared one file ID). `_install()` called `_unlock_existing_binaries(self.install_dir)` before `cmake --install`; that helper globbed `bin\*.exe` and renamed each hit to `*.exe.old` — through the junction, renaming the **freshly built binaries inside the build tree** (79 of them). `cmake --install` then aborted with `file INSTALL cannot find ".../build-hip-win/bin/test-tokenizer-0.exe"` and exit code 1. Compilation had always succeeded; the install step ate the artifacts. `_unlock_existing_binaries()` now skips any candidate resolving inside the build directory, `_install()` replaces a junction at `install\bin` with a real directory before touching a binary, and renamed binaries are restored if the install fails.
+2. **HIP SDK installer was never actually silent.** The updater ran it with NSIS/MSI flags `["/S", "/v/qn", "/norestart"]`. AMD's HIP SDK installer is a WinMain GUI application that ignores those switches, so a GUI window opened on the node and a human had to click through it. It now uses AMD's documented CLI: `-install -log <path>` (plus `-boot` only when a reboot is acceptable).
+3. **Dead installer URL space.** `_find_latest_installer()` probed `repo.radeon.com/rocm/msi/...` — every path 404s. It now probes the live `download.amd.com/developer/eula/rocm-hub/` space with one-byte Range GETs. Live quarters: 26.Q3 (current, ships HIP SDK 7.2.x), 26.Q1, 25.Q3, 24.Q4, 24.Q3. Recent quarters ship the `Win11` suffix only while 25.Q3 and earlier use `Win10-Win11`; both are probed.
+4. **Legacy fallback silently installed a duplicate SDK.** When probing failed the code returned the 24.Q3 bundle labelled the unverified version `6.1.2` — that is what installed a second HIP SDK 6.1.0 component set on top of the existing 7.1.0. The fallback is gone; the resolver now raises a clear RuntimeError instead of ever installing a 6.x bundle over a 7.x install.
+5. **Consumer display driver protection.** AMD's `-install` also installs the bundled Radeon Software PRO driver, which would replace the consumer Adrenalin driver required for FSR. The driver package and active driver version are now captured before and after the install, and a loud warning names the old and new versions if the consumer driver was replaced.
+6. **rocBLAS Tensile data was missing at runtime.** `rocblas.dll` could not find its Tensile library and aborted with `Could not initialize Tensile host`. The `ROCm\7.1\bin\rocblas\library` payload (891 files, including the gfx1100 kernel set) is now bundled into the install tree, and `ROCBLAS_TENSILE_LIBPATH` is pinned to that directory.
+
+### Changed
+- **HIP SDK component set on the AMD node reduced to what was requested.** Only HIP SDK 7.1.0 remains (Core, Libraries Runtime + Development, Runtime Compiler Runtime + Development, Ray Tracing Runtime + Development, ROCm Debugger). The **Visual Studio 2022 Plugin was removed**, along with the stale 6.1.0 set (a side effect of the bad GUI run) and the 6.4.0 set; the orphaned `ROCm\6.1` and `ROCm\6.4` directories were removed. The consumer display driver (AMD Software 26.10.1) was left untouched.
+
+### Verified
+- 26/26 tests pass (11 `test_windows_hip.py` + 15 `test_windows_llama_builder.py`); 4 new regression tests cover the junction incident, restore-on-failure, no-litter-after-success, and junction-source mirroring
+- `cmake --install` exit code 0; `llama-server.exe --version` → `0.7.0-dev (build 2646, commit c7fc5094)`
+- Live GPU: `ggml_cuda_init: found 1 ROCm devices` → `AMD Radeon RX 7900 XTX, gfx1100, VRAM 24560 MiB`; `llama-cli --list-devices` → `ROCm0 (24560 MiB, 24410 MiB free)`
+- Real HIP kernels executed on the consumer driver: `test-backend-ops -b ROCm0 -o ADD,MUL_MAT` → 0 failures, 0 rocBLAS errors, exit 0
+- All 22 critical runtime DLLs present in `C:\Gillsystems\llama.cpp\bin`; 0 missing
+- Live resolver against the real network returns `AMD-Software-PRO-Edition-26.Q3-Win11-For-HIP.exe`; live URL probes confirm 26.Q4, 26.Q2 and 25.Q4 are 404 and are excluded
+- The exact incident was reproduced on the node (junction re-created + 3 binaries renamed to `.exe.old`) and the patched `_install()` recovered it: build tree restored 84 → 87 exes, 0 litter, junction replaced by a real directory, install exit 0
+
+---
+
 ## v2.6.0 — 2026-09-21 — Round 8: Installable Package, Multi-Gen GPU Detection, Privacy Scrub
 
 ### Summary
